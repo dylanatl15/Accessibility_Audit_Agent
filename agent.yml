@@ -1,0 +1,12 @@
+name: Basic Agent
+model: gpt-5.2
+welcome_text: "Hello! I'm your assistant. I can tell you the time, do math, flip coins, and roll dice."
+instructions_file: instructions.md
+tools:
+  - get_current_time
+  - calculate
+  - flip_coin
+  - roll_dice
+model_settings:
+  temperature: 0.7
+  max_tokens: 4096
