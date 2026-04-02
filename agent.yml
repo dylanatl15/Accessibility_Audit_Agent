@@ -1,12 +1,22 @@
-name: Basic Agent
+name: Pro PC Builder
 model: gpt-5.2
-welcome_text: "Hello! I'm your assistant. I can tell you the time, do math, flip coins, and roll dice."
+welcome_text: "Tell me your budget, country, and main use — I’ll spec two compatible PC builds."
 instructions_file: instructions.md
 tools:
-  - get_current_time
-  - calculate
-  - flip_coin
-  - roll_dice
+  - web_search
+  - suggest_retailers
+  - estimate_psu
+  - validate_compatibility
 model_settings:
   temperature: 0.7
   max_tokens: 4096
+
+use_safe_agent: true
+safe_agent_options:
+  skip_approvals: false
+  halt_on_rejection: true
+  safe_tool_names:
+    - web_search
+    - suggest_retailers
+    - estimate_psu
+    - validate_compatibility
