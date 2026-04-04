@@ -1,6 +1,8 @@
-# Basic Agent Starter Kit
+# Accessibility Audit Agent
 
-A minimal working AI agent built with [OmniAgents](https://pypi.fury.io/ericmichael/). Clone this repo and have a running agent in under 5 minutes.
+An OmniAgents-based assistant for auditing and improving accessibility across websites and local documents.
+
+This agent is designed for higher-ed compliance workflows and is aligned to the DOJ ADA Title II web/mobile app rule baseline (WCAG 2.1 AA), while still supporting best-practice guidance.
 
 ## Setup
 
@@ -8,8 +10,11 @@ A minimal working AI agent built with [OmniAgents](https://pypi.fury.io/ericmich
 # Install dependencies
 pip install -r requirements.txt
 
-# Install Node dependencies for the accessibility scanner
+# Install Node dependencies for the browser scanner
 npm install
+
+# Install Playwright browser
+npx playwright install chromium
 
 # Configure your environment
 cp .env.example .env
@@ -31,58 +36,33 @@ omniagents run -c agent.yml --mode ink
 omniagents run -c agent.yml --mode server --port 9494
 ```
 
-## Accessibility Audits
+## What It Can Do
 
-This sample agent includes a browser-based accessibility scanner.
+- Crawl and scan websites with Playwright + axe-core (`run_accessibility_audit`).
+- Scan local documents for accessibility issues (`scan_documents_accessibility`).
+- Propose and apply certain automated document fixes (`propose_document_fixes`, `apply_document_fixes`).
+- Extract images from DOCX/PPTX and generate alt text with vision (`extract_document_images`, `read_image`, `apply_document_alt_text`).
 
-```bash
-pip install -r requirements.txt
-npm install
-npx playwright install chromium
-omniagents run -c agent.yml
-```
+## Compliance Reference
+
+- DOJ Title II web/mobile rule summary: `docs/ADA_Title_II_Web_and_Mobile_App_Rule_Requirements.md`
+- Project improvement plan: `docs/Agent_Improvements_TODO_for_UTRGV_Compliance.md`
 
 ## Project Structure
 
 ```
-basic_agent/
-├── agent.yml          # Agent configuration — name, model, tools, settings
-├── instructions.md    # System prompt — tells the agent how to behave
+Accessibility_Audit_Agent/
+├── agent.yml
+├── instructions.md
 ├── tools/
-│   └── utils.py       # Custom tools — get_current_time, calculate, flip_coin, roll_dice
-├── .env.example       # Environment variable template
-└── requirements.txt   # Python dependencies
+│   ├── accessibility_audit.py
+│   ├── document_accessibility.py
+│   ├── image_alt_text.py
+│   └── ...
+├── docs/
+│   ├── ADA_Title_II_Web_and_Mobile_App_Rule_Requirements.md
+│   └── Agent_Improvements_TODO_for_UTRGV_Compliance.md
+├── .env.example
+├── requirements.txt
+└── package.json
 ```
-
-## Customizing Your Agent
-
-**Change the personality** — Edit `instructions.md` with a new system prompt.
-
-**Add builtin tools** — Add any of these to the `tools` list in `agent.yml` (no code needed):
-
-`read_file`, `write_file`, `edit_file`, `execute_bash`, `glob_files`, `grep_files`, `list_directory`, `web_search`, `download_file`, `read_image`, `display_artifact`, `scholar_search`, `youtube_search`
-
-**Create custom tools** — Add a Python file in `tools/` with decorated functions:
-
-```python
-from omniagents import function_tool
-
-@function_tool
-def my_tool(param: str) -> str:
-    """Description of what this tool does.
-
-    Args:
-        param: What this parameter is for.
-    """
-    return f"Result: {param}"
-```
-
-Then add the tool name to the `tools` list in `agent.yml`.
-
-**Generate tools from an API** — If you have an OpenAPI spec:
-
-```bash
-omniagents generate openapi --spec my_api.yaml --name my_api
-```
-
-This creates `tools/my_api_tools.py` with ready-to-use tools. Add them to `agent.yml` by name.

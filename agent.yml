@@ -1,6 +1,6 @@
-name: Web Accessibility Compliance Auditor
+name: Accessibility Audit Agent
 model: gpt-5.2
-welcome_text: "Give me a URL (and login info if needed) and I’ll crawl and audit for accessibility issues."
+welcome_text: "Give me a URL or a local folder and I’ll audit accessibility (WCAG 2.1 AA baseline)."
 instructions_file: instructions.md
 tools:
   - run_accessibility_audit
@@ -25,6 +25,7 @@ safe_agent_options:
     - run_accessibility_audit
     - list_documents_for_a11y_scan
     - scan_documents_accessibility
+    - propose_document_fixes
     - read_image
     - extract_document_images
     - cleanup_temp_artifacts

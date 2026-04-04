@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 *.skill
 
+scripts/secret_scan.py
+
 node_modules/
 .tmp_a11y/
 .omni_code/skills/
