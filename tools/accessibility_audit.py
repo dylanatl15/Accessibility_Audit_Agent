@@ -6,6 +6,8 @@ import subprocess
 import sys
 from shutil import which
 from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin, urlparse
 
@@ -90,6 +92,26 @@ def _summarize_violations(violations: List[Dict[str, Any]]) -> Dict[str, Any]:
             entry["impact"] = v.get("impact")
     sorted_rules = sorted(by_id.values(), key=lambda x: (-int(x.get("count", 0)), str(x.get("id", ""))))
     return {"total_rules": len(sorted_rules), "rules": sorted_rules}
+
+
+def _standard_target() -> str:
+    return "WCAG 2.1 AA (automated checks; manual review required)"
+
+
+def _default_report_path(prefix: str) -> Path:
+    root = Path(__file__).resolve().parents[1] / "reports"
+    root.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return root / f"{prefix}_{ts}.json"
+
+
+def _write_json_report(path: Path, payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True, None
+    except Exception as e:
+        return False, str(e)
 
 
 def _run_node_audit(
@@ -210,6 +232,7 @@ def run_accessibility_audit(
     post_login_url_prefix: Optional[str] = None,
     headless: bool = True,
     wait_ms: int = 500,
+    output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crawl a website and run an automated accessibility audit.
 
@@ -277,10 +300,10 @@ def run_accessibility_audit(
 
         pages = node_res["pages"]
         summary = node_res["top_issues"]
-        return {
+        res: Dict[str, Any] = {
             "ok": True,
             "engine": node_res.get("engine"),
-            "standard_target": "WCAG 2.2 AA (automated checks; manual review required)",
+            "standard_target": _standard_target(),
             "also_relevant": ["Section 508 (US)", "EN 301 549 (EU)"],
             "start_url": start_url_n,
             "max_pages": max_pages,
@@ -288,6 +311,13 @@ def run_accessibility_audit(
             "pages": pages,
             "top_issues": summary,
         }
+
+        report_path = Path(output_path).expanduser() if output_path else _default_report_path("web_a11y")
+        ok, err = _write_json_report(report_path, res)
+        res["report_path"] = str(report_path)
+        if not ok:
+            res["report_write_error"] = err
+        return res
 
     try:
         from playwright.sync_api import sync_playwright  # type: ignore
@@ -414,7 +444,7 @@ def run_accessibility_audit(
 
     return {
         "ok": True,
-        "standard_target": "WCAG 2.2 AA (automated checks; manual review required)",
+        "standard_target": _standard_target(),
         "also_relevant": ["Section 508 (US)", "EN 301 549 (EU)"],
         "start_url": start_url_n,
         "max_pages": max_pages,
@@ -426,3 +456,81 @@ def run_accessibility_audit(
             "json": json.dumps({"pages": scanned, "top_issues": summary}, ensure_ascii=False)[:20000],
         },
     }
+
+
+@function_tool
+def run_multisite_accessibility_audit(
+    start_urls: List[str],
+    max_pages_per_site: int = 25,
+    include_url_patterns: Optional[List[str]] = None,
+    exclude_url_patterns: Optional[List[str]] = None,
+    headless: bool = True,
+    wait_ms: int = 500,
+    output_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Run accessibility audits across multiple sites and write a combined report.
+
+    Args:
+        start_urls: List of site URLs to scan.
+        max_pages_per_site: Max number of pages to scan per site.
+        include_url_patterns: Optional regex allowlist (applied per URL).
+        exclude_url_patterns: Optional regex denylist (applied per URL).
+        headless: Run browser headless.
+        wait_ms: Wait time after navigation.
+        output_path: Optional explicit output path for the combined JSON report.
+
+    Returns:
+        Combined report with per-site results plus an aggregated top-issues summary.
+    """
+
+    cleaned = [
+        _normalize_url(u)
+        for u in start_urls
+        if isinstance(u, str) and _normalize_url(u)
+    ]
+    if not cleaned:
+        return {"ok": False, "error": "start_urls must include at least one valid URL"}
+
+    per_site: List[Dict[str, Any]] = []
+    all_violations: List[Dict[str, Any]] = []
+
+    for u in cleaned:
+        r = run_accessibility_audit._original_func(
+            start_url=u,
+            max_pages=max_pages_per_site,
+            same_domain_only=True,
+            include_url_patterns=include_url_patterns,
+            exclude_url_patterns=exclude_url_patterns,
+            login_url=None,
+            username=None,
+            password=None,
+            username_selector=None,
+            password_selector=None,
+            submit_selector=None,
+            post_login_url_prefix=None,
+            headless=headless,
+            wait_ms=wait_ms,
+            output_path=None,
+        )
+        per_site.append(r)
+        pages = r.get("pages")
+        if isinstance(pages, list):
+            for item in pages:
+                if isinstance(item, dict) and isinstance(item.get("violations"), list):
+                    all_violations.extend(item["violations"])
+
+    combined: Dict[str, Any] = {
+        "ok": True,
+        "standard_target": _standard_target(),
+        "also_relevant": ["Section 508 (US)", "EN 301 549 (EU)"],
+        "sites": per_site,
+        "top_issues": _summarize_violations(all_violations),
+    }
+
+    report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
+    ok, err = _write_json_report(report_path, combined)
+    combined["report_path"] = str(report_path)
+    if not ok:
+        combined["report_write_error"] = err
+
+    return combined

@@ -4,6 +4,7 @@ welcome_text: "Give me a URL or a local folder and I’ll audit accessibility (W
 instructions_file: instructions.md
 tools:
   - run_accessibility_audit
+  - run_multisite_accessibility_audit
   - list_documents_for_a11y_scan
   - scan_documents_accessibility
   - propose_document_fixes

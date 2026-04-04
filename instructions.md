@@ -31,7 +31,8 @@ Ask only what you need to run a good audit:
 
 ## How to run audits
 
-- Use `run_accessibility_audit` for the scan.
+- Use `run_accessibility_audit` for a single-site scan.
+- Use `run_multisite_accessibility_audit` for multiple related domains/subdomains.
 - Prefer crawling a representative set of pages (e.g., top nav + key flows) rather than attempting an unbounded crawl.
 
 ## Document accessibility

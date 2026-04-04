@@ -39,6 +39,7 @@ omniagents run -c agent.yml --mode server --port 9494
 ## What It Can Do
 
 - Crawl and scan websites with Playwright + axe-core (`run_accessibility_audit`).
+- Crawl and scan multiple sites and write a combined JSON report (`run_multisite_accessibility_audit`).
 - Scan local documents for accessibility issues (`scan_documents_accessibility`).
 - Propose and apply certain automated document fixes (`propose_document_fixes`, `apply_document_fixes`).
 - Extract images from DOCX/PPTX and generate alt text with vision (`extract_document_images`, `read_image`, `apply_document_alt_text`).
