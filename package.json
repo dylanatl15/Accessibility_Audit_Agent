@@ -1,0 +1,9 @@
+{
+  "name": "web-accessibility-checker-agent",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "axe-core": "^4.10.3",
+    "playwright": "^1.53.0"
+  }
+}

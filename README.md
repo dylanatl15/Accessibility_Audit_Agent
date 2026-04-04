@@ -8,10 +8,15 @@ A minimal working AI agent built with [OmniAgents](https://pypi.fury.io/ericmich
 # Install dependencies
 pip install -r requirements.txt
 
+# Install Node dependencies for the accessibility scanner
+npm install
+
 # Configure your environment
 cp .env.example .env
 # Edit .env and add your API key
 ```
+
+Python 3.10–3.12 is recommended for browser automation tooling.
 
 ## Run
 
@@ -24,6 +29,17 @@ omniagents run -c agent.yml --mode ink
 
 # API server (for programmatic access)
 omniagents run -c agent.yml --mode server --port 9494
+```
+
+## Accessibility Audits
+
+This sample agent includes a browser-based accessibility scanner.
+
+```bash
+pip install -r requirements.txt
+npm install
+npx playwright install chromium
+omniagents run -c agent.yml
 ```
 
 ## Project Structure

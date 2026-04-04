@@ -144,7 +144,7 @@ def estimate_psu(
 
 
 @function_tool
-def validate_compatibility(build: Dict[str, Any]) -> Dict[str, Any]:
+def validate_compatibility(build_json: str) -> Dict[str, Any]:
     """Validate basic PC part compatibility from a structured build summary.
 
     Provide a minimal structured summary of the build (you can include extra keys). This tool checks what it can and reports unknowns.
@@ -164,7 +164,7 @@ def validate_compatibility(build: Dict[str, Any]) -> Dict[str, Any]:
       - recommended_psu_w: int (optional)
 
     Args:
-        build: Structured build summary.
+        build_json: JSON string for a structured build summary.
 
     Returns:
         Dict with keys:
@@ -173,6 +173,21 @@ def validate_compatibility(build: Dict[str, Any]) -> Dict[str, Any]:
           - warnings: List[str]
           - unknowns: List[str]
     """
+
+    import json
+
+    try:
+        build = json.loads(build_json or "")
+    except Exception:
+        build = None
+
+    if not isinstance(build, dict):
+        return {
+            "ok": False,
+            "issues": ["build_json must be a JSON object."],
+            "warnings": [],
+            "unknowns": [],
+        }
 
     issues: List[str] = []
     warnings: List[str] = []

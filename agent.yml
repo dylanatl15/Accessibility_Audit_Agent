@@ -1,14 +1,20 @@
-name: Pro PC Builder
+name: Web Accessibility Compliance Auditor
 model: gpt-5.2
-welcome_text: "Tell me your budget, country, and main use — I’ll spec two compatible PC builds."
+welcome_text: "Give me a URL (and login info if needed) and I’ll crawl and audit for accessibility issues."
 instructions_file: instructions.md
 tools:
-  - web_search
-  - suggest_retailers
-  - estimate_psu
-  - validate_compatibility
+  - run_accessibility_audit
+  - list_documents_for_a11y_scan
+  - scan_documents_accessibility
+  - propose_document_fixes
+  - apply_document_fixes
+  - convert_ppt_to_pptx
+  - read_image
+  - extract_document_images
+  - apply_document_alt_text
+  - cleanup_temp_artifacts
 model_settings:
-  temperature: 0.7
+  temperature: 0.3
   max_tokens: 4096
 
 use_safe_agent: true
@@ -16,7 +22,9 @@ safe_agent_options:
   skip_approvals: false
   halt_on_rejection: true
   safe_tool_names:
-    - web_search
-    - suggest_retailers
-    - estimate_psu
-    - validate_compatibility
+    - run_accessibility_audit
+    - list_documents_for_a11y_scan
+    - scan_documents_accessibility
+    - read_image
+    - extract_document_images
+    - cleanup_temp_artifacts
