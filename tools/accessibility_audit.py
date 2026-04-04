@@ -234,30 +234,7 @@ def run_accessibility_audit(
     wait_ms: int = 500,
     output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Crawl a website and run an automated accessibility audit.
-
-    This tool performs an automated scan aligned to WCAG 2.x A/AA style rules via axe.
-    It can optionally log into a site first using the provided credentials.
-
-    Args:
-        start_url: The first page to scan. If missing scheme, https:// is assumed.
-        max_pages: Max number of pages to scan during crawl.
-        same_domain_only: If true, only crawl links on the same scheme+host as start_url.
-        include_url_patterns: Optional regex patterns; if provided, only URLs matching at least one pattern are scanned.
-        exclude_url_patterns: Optional regex patterns; URLs matching any pattern are skipped.
-        login_url: Optional URL to perform login before scanning. Defaults to start_url if provided credentials.
-        username: Optional username/email for login.
-        password: Optional password for login.
-        username_selector: Optional CSS selector for the username/email input.
-        password_selector: Optional CSS selector for the password input.
-        submit_selector: Optional CSS selector for the submit button.
-        post_login_url_prefix: Optional URL prefix expected after login (used as a best-effort login success check).
-        headless: Run browser headless.
-        wait_ms: Wait time after navigation and login actions.
-
-    Returns:
-        Dict summary with pages scanned, per-page results, and a top-issues summary.
-    """
+    """Crawl and scan a website with axe-core."""
 
     start_url_n = _normalize_url(start_url)
     if not start_url_n:
@@ -468,20 +445,7 @@ def run_multisite_accessibility_audit(
     wait_ms: int = 500,
     output_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run accessibility audits across multiple sites and write a combined report.
-
-    Args:
-        start_urls: List of site URLs to scan.
-        max_pages_per_site: Max number of pages to scan per site.
-        include_url_patterns: Optional regex allowlist (applied per URL).
-        exclude_url_patterns: Optional regex denylist (applied per URL).
-        headless: Run browser headless.
-        wait_ms: Wait time after navigation.
-        output_path: Optional explicit output path for the combined JSON report.
-
-    Returns:
-        Combined report with per-site results plus an aggregated top-issues summary.
-    """
+    """Scan multiple sites and write a combined JSON report."""
 
     cleaned = [
         _normalize_url(u)

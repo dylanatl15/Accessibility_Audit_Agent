@@ -17,3 +17,5 @@ tmp_extract.json
 *_a11y_report.json
 *_fix_results.json
 *_postfix_a11y_report.json
+
+reports/
