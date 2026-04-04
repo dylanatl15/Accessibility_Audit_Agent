@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urljoin, urlparse
+from urllib.request import urlopen
 
 from omniagents import function_tool
 
@@ -70,6 +71,38 @@ def _extract_links(base_url: str, hrefs: List[str]) -> List[str]:
     return out
 
 
+def _sitemap_seed_urls(start_url: str, sitemap_url: Optional[str], cap: int) -> List[str]:
+    seed: List[str] = []
+    start = urlparse(start_url)
+    if not start.scheme or not start.netloc:
+        return seed
+
+    sm = sitemap_url or f"{start.scheme}://{start.netloc}/sitemap.xml"
+    try:
+        with urlopen(sm, timeout=10) as resp:
+            xml = resp.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return seed
+
+    for m in re.finditer(r"<loc>\s*([^<\s]+)\s*</loc>", xml, flags=re.IGNORECASE):
+        if len(seed) >= cap:
+            break
+        loc = str(m.group(1)).strip()
+        try:
+            u = urlparse(loc)
+        except Exception:
+            continue
+        if u.scheme not in {"http", "https"}:
+            continue
+        if u.netloc != start.netloc:
+            continue
+        cleaned = u._replace(fragment="").geturl()
+        if cleaned not in seed:
+            seed.append(cleaned)
+
+    return seed
+
+
 def _summarize_violations(violations: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_id: Dict[str, Dict[str, Any]] = {}
     for v in violations:
@@ -124,6 +157,8 @@ def _run_node_audit(
     login_cfg: Optional[_LoginConfig],
     headless: bool,
     wait_ms: int,
+    use_sitemap: bool,
+    sitemap_url: Optional[str],
 ) -> Dict[str, Any]:
     script_path = str((__import__("pathlib").Path(__file__).parent / "node_a11y_audit.mjs").resolve())
 
@@ -142,7 +177,12 @@ def _run_node_audit(
         "true" if headless else "false",
         "--wait_ms",
         str(wait_ms),
+        "--use_sitemap",
+        "true" if use_sitemap else "false",
     ]
+
+    if sitemap_url:
+        cmd.extend(["--sitemap_url", sitemap_url])
 
     if include_url_patterns is not None:
         cmd.extend(["--include_url_patterns", json.dumps(include_url_patterns)])
@@ -233,6 +273,8 @@ def run_accessibility_audit(
     headless: bool = True,
     wait_ms: int = 500,
     output_path: Optional[str] = None,
+    use_sitemap: bool = False,
+    sitemap_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Crawl and scan a website with axe-core."""
 
@@ -267,6 +309,8 @@ def run_accessibility_audit(
             login_cfg=login_cfg,
             headless=headless,
             wait_ms=wait_ms,
+            use_sitemap=use_sitemap,
+            sitemap_url=sitemap_url,
         )
         if not node_res.get("ok"):
             return {
@@ -322,6 +366,12 @@ def run_accessibility_audit(
     scanned: List[Dict[str, Any]] = []
     visited: Set[str] = set()
     queue: List[str] = [start_url_n]
+
+    if use_sitemap:
+        seeds = _sitemap_seed_urls(start_url_n, sitemap_url, cap=max(25, max_pages * 5))
+        for s in seeds:
+            if s not in queue:
+                queue.append(s)
 
     def pop_next() -> Optional[str]:
         while queue:
@@ -444,6 +494,8 @@ def run_multisite_accessibility_audit(
     headless: bool = True,
     wait_ms: int = 500,
     output_path: Optional[str] = None,
+    use_sitemap: bool = False,
+    sitemap_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Scan multiple sites and write a combined JSON report."""
 
@@ -475,6 +527,8 @@ def run_multisite_accessibility_audit(
             headless=headless,
             wait_ms=wait_ms,
             output_path=None,
+            use_sitemap=use_sitemap,
+            sitemap_url=sitemap_url,
         )
         per_site.append(r)
         pages = r.get("pages")

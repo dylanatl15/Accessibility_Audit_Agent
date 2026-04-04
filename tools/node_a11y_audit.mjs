@@ -1,6 +1,57 @@
 import { chromium } from "playwright";
 import axe from "axe-core";
 
+async function fetchText(url) {
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return await res.text();
+}
+
+function extractSitemapLocs(xml) {
+  const locs = [];
+  const re = /<loc>\s*([^<\s]+)\s*<\/loc>/gi;
+  let m;
+  while ((m = re.exec(xml))) {
+    locs.push(String(m[1]));
+  }
+  return locs;
+}
+
+async function getSitemapUrls(startUrl, sitemapUrl, cap) {
+  const start = new URL(startUrl);
+  const candidates = [sitemapUrl || new URL("/sitemap.xml", start).toString()];
+  const out = [];
+  const seen = new Set();
+
+  for (const sm of candidates) {
+    if (out.length >= cap) break;
+    let xml;
+    try {
+      xml = await fetchText(sm);
+    } catch {
+      continue;
+    }
+
+    const locs = extractSitemapLocs(xml);
+    for (const loc of locs) {
+      if (out.length >= cap) break;
+      if (seen.has(loc)) continue;
+      seen.add(loc);
+      try {
+        const u = new URL(loc);
+        if (u.protocol !== "http:" && u.protocol !== "https:") continue;
+        u.hash = "";
+        if (u.host !== start.host) continue;
+        out.push(u.toString());
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return out;
+}
+
 const axeSource = axe.source;
 
 function normalizeUrl(url) {
@@ -97,6 +148,8 @@ const includePatterns = getJsonList("include_url_patterns");
 const excludePatterns = getJsonList("exclude_url_patterns");
 const headless = getBool("headless", true);
 const waitMs = getInt("wait_ms", 500);
+const useSitemap = getBool("use_sitemap", false);
+const sitemapUrlOverride = getArg("sitemap_url");
 
 const loginUrlRaw = getArg("login_url");
 const username = getArg("username");
@@ -115,7 +168,7 @@ if (loginEnabled && (!username || !password)) {
 const loginUrl = normalizeUrl(loginUrlRaw || startUrl);
 
 const visited = new Set();
-const queue = [startUrl];
+let queue = [startUrl];
 const pages = [];
 
 function popNext() {
@@ -138,6 +191,11 @@ function popNext() {
 
 let browser;
 try {
+  if (useSitemap) {
+    const sitemapUrls = await getSitemapUrls(startUrl, sitemapUrlOverride, Math.max(25, maxPages * 5));
+    if (sitemapUrls && sitemapUrls.length) queue = Array.from(new Set([startUrl, ...sitemapUrls]));
+  }
+
   browser = await chromium.launch({ headless });
   const context = await browser.newContext();
   const page = await context.newPage();
