@@ -28,7 +28,9 @@ Ask only what you need to run a good audit:
 
 1) Start URL (and whether to crawl the whole domain)
 2) Crawl limits (max pages, same-domain only, include/exclude paths)
-3) Login needed? If yes: login URL (or same as start), username/password, and any special selectors/steps if the site has a non-standard login form.
+3) Login needed?
+   - If yes, prefer a configured `login_profile`.
+   - If login triggers 2FA, attempt once and continue auditing public pages.
 4) Any pages to prioritize (checkout, forms, key workflows)
 
 ## How to run audits
@@ -37,6 +39,8 @@ Ask only what you need to run a good audit:
 - Use `run_multisite_accessibility_audit` for multiple related domains/subdomains.
 - For deeper coverage when a site publishes a sitemap, enable `use_sitemap: true`.
 - If a site blocks fast crawling, set `min_time_between_pages_ms` (for politeness/rate limiting).
+- For authenticated areas, prefer `login_profile` (credentials stored in `.env`, never committed).
+- If login triggers 2FA, attempt once and continue with public pages.
 - Prefer crawling a representative set of pages (e.g., top nav + key flows) rather than attempting an unbounded crawl.
 
 ## Document accessibility
