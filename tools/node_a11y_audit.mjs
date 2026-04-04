@@ -61,6 +61,33 @@ function normalizeUrl(url) {
   return u;
 }
 
+function canonicalizeUrl(url, stripTrackingParams = true) {
+  try {
+    const u = new URL(url);
+    u.hash = "";
+    if (stripTrackingParams) {
+      const removeKeys = [];
+      for (const [k] of u.searchParams.entries()) {
+        const key = String(k || "").toLowerCase();
+        if (
+          key.startsWith("utm_") ||
+          key === "gclid" ||
+          key === "fbclid" ||
+          key === "mc_cid" ||
+          key === "mc_eid"
+        ) {
+          removeKeys.push(k);
+        }
+      }
+      for (const k of removeKeys) u.searchParams.delete(k);
+    }
+    if (u.pathname !== "/" && u.pathname.endsWith("/")) u.pathname = u.pathname.slice(0, -1);
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
 function sameSite(a, b) {
   try {
     const pa = new URL(a);
@@ -95,7 +122,6 @@ function extractLinks(baseUrl, hrefs) {
     try {
       const u = new URL(h, baseUrl);
       if (u.protocol !== "http:" && u.protocol !== "https:") continue;
-      u.hash = "";
       out.push(u.toString());
     } catch {
       continue;
@@ -150,6 +176,8 @@ const headless = getBool("headless", true);
 const waitMs = getInt("wait_ms", 500);
 const useSitemap = getBool("use_sitemap", false);
 const sitemapUrlOverride = getArg("sitemap_url");
+const minTimeBetweenPagesMs = getInt("min_time_between_pages_ms", 0);
+const stripTrackingParams = getBool("strip_tracking_params", true);
 
 const loginUrlRaw = getArg("login_url");
 const username = getArg("username");
@@ -171,20 +199,33 @@ const visited = new Set();
 let queue = [startUrl];
 const pages = [];
 
+let lastNavMs = 0;
+
+async function throttle() {
+  if (!minTimeBetweenPagesMs) return;
+  const now = Date.now();
+  const delta = now - lastNavMs;
+  if (delta < minTimeBetweenPagesMs) {
+    await new Promise((r) => setTimeout(r, minTimeBetweenPagesMs - delta));
+  }
+  lastNavMs = Date.now();
+}
+
 function popNext() {
   while (queue.length) {
     const url = queue.shift();
     if (!url) continue;
-    if (visited.has(url)) continue;
+    const c = canonicalizeUrl(url, stripTrackingParams);
+    if (visited.has(c)) continue;
     if (shouldSkip(url, includePatterns, excludePatterns)) {
-      visited.add(url);
+      visited.add(c);
       continue;
     }
     if (sameDomainOnly && !sameSite(startUrl, url)) {
-      visited.add(url);
+      visited.add(c);
       continue;
     }
-    return url;
+    return c;
   }
   return null;
 }
@@ -193,7 +234,10 @@ let browser;
 try {
   if (useSitemap) {
     const sitemapUrls = await getSitemapUrls(startUrl, sitemapUrlOverride, Math.max(25, maxPages * 5));
-    if (sitemapUrls && sitemapUrls.length) queue = Array.from(new Set([startUrl, ...sitemapUrls]));
+    if (sitemapUrls && sitemapUrls.length) {
+      const seeded = [startUrl, ...sitemapUrls].map((u) => canonicalizeUrl(u, stripTrackingParams));
+      queue = Array.from(new Set(seeded));
+    }
   }
 
   browser = await chromium.launch({ headless });
@@ -230,8 +274,12 @@ try {
     visited.add(url);
 
     try {
+      await throttle();
       await page.goto(url, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(waitMs);
+
+      const finalUrl = canonicalizeUrl(page.url(), stripTrackingParams);
+      visited.add(finalUrl);
 
       await page.addScriptTag({ content: axeSource });
       const axeResults = await page.evaluate(async () => {
@@ -242,6 +290,7 @@ try {
       const violations = (axeResults && axeResults.violations) || [];
       pages.push({
         url,
+        final_url: finalUrl,
         title: await page.title(),
         violations_count: Array.isArray(violations) ? violations.length : 0,
         violations,
@@ -249,7 +298,8 @@ try {
 
       const hrefs = await page.$$eval("a[href]", (els) => els.map((e) => e.getAttribute("href")));
       for (const link of extractLinks(url, hrefs)) {
-        if (!visited.has(link) && !queue.includes(link)) queue.push(link);
+        const c = canonicalizeUrl(link, stripTrackingParams);
+        if (!visited.has(c) && !queue.includes(c)) queue.push(c);
       }
     } catch (e) {
       pages.push({ url, error: String(e) });
