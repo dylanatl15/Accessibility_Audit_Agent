@@ -3,6 +3,7 @@ model: gpt-5.2
 welcome_text: "Give me a URL or a local folder and I’ll audit accessibility (WCAG 2.1 AA baseline)."
 instructions_file: instructions.md
 tools:
+  - list_login_profiles
   - run_accessibility_audit
   - run_multisite_accessibility_audit
   - list_documents_for_a11y_scan
@@ -23,6 +24,7 @@ safe_agent_options:
   skip_approvals: false
   halt_on_rejection: true
   safe_tool_names:
+    - list_login_profiles
     - run_accessibility_audit
     - list_documents_for_a11y_scan
     - scan_documents_accessibility

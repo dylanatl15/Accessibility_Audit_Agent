@@ -28,7 +28,10 @@ Ask only what you need to run a good audit:
 
 1) Start URL (and whether to crawl the whole domain)
 2) Crawl limits (max pages, same-domain only, include/exclude paths)
-3) Login needed? If yes: login URL (or same as start), username/password, and any special selectors/steps if the site has a non-standard login form.
+3) Login needed?
+   - If yes, prefer a configured `login_profile`.
+   - Call `list_login_profiles` to see what is available.
+   - Only ask the user for username/password if no valid profile exists.
 4) Any pages to prioritize (checkout, forms, key workflows)
 
 ## How to run audits

@@ -48,6 +48,31 @@ def _load_login_profile(name: str) -> Optional[_LoginConfig]:
     )
 
 
+@function_tool
+def list_login_profiles() -> Dict[str, Any]:
+    """List configured login profiles from environment variables."""
+
+    profiles: Dict[str, Dict[str, bool]] = {}
+    for k in os.environ.keys():
+        if not k.startswith("A11Y_LOGIN_"):
+            continue
+        rest = k[len("A11Y_LOGIN_") :]
+        if "_" not in rest:
+            continue
+        name, field = rest.split("_", 1)
+        if not name or not field:
+            continue
+        entry = profiles.setdefault(name.lower(), {})
+        entry[field.lower()] = True
+
+    out: List[Dict[str, Any]] = []
+    for name, fields in sorted(profiles.items()):
+        ok = bool(fields.get("url") and fields.get("username") and fields.get("password"))
+        out.append({"name": name, "ready": ok})
+
+    return {"ok": True, "profiles": out}
+
+
 def _same_site(a: str, b: str) -> bool:
     pa = urlparse(a)
     pb = urlparse(b)
