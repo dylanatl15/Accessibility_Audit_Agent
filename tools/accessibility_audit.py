@@ -42,6 +42,30 @@ def _normalize_url(url: str) -> str:
     return u
 
 
+def _canonical_url(url: str, *, strip_tracking_params: bool = True) -> str:
+    try:
+        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+        parts = urlsplit(url)
+        query_pairs = parse_qsl(parts.query, keep_blank_values=True)
+        if strip_tracking_params:
+            filtered: List[Tuple[str, str]] = []
+            for k, v in query_pairs:
+                key = (k or "").lower()
+                if key.startswith("utm_") or key in {"gclid", "fbclid", "mc_cid", "mc_eid"}:
+                    continue
+                filtered.append((k, v))
+            query_pairs = filtered
+
+        query = urlencode(query_pairs, doseq=True)
+        path = parts.path
+        if path.endswith("/") and path != "/":
+            path = path[:-1]
+        return urlunsplit((parts.scheme, parts.netloc, path, query, ""))
+    except Exception:
+        return url
+
+
 def _should_skip(url: str, include: Optional[List[str]], exclude: Optional[List[str]]) -> bool:
     if exclude:
         for pattern in exclude:
@@ -159,6 +183,8 @@ def _run_node_audit(
     wait_ms: int,
     use_sitemap: bool,
     sitemap_url: Optional[str],
+    min_time_between_pages_ms: int,
+    strip_tracking_params: bool,
 ) -> Dict[str, Any]:
     script_path = str((__import__("pathlib").Path(__file__).parent / "node_a11y_audit.mjs").resolve())
 
@@ -179,6 +205,10 @@ def _run_node_audit(
         str(wait_ms),
         "--use_sitemap",
         "true" if use_sitemap else "false",
+        "--min_time_between_pages_ms",
+        str(int(min_time_between_pages_ms)),
+        "--strip_tracking_params",
+        "true" if strip_tracking_params else "false",
     ]
 
     if sitemap_url:
@@ -275,6 +305,8 @@ def run_accessibility_audit(
     output_path: Optional[str] = None,
     use_sitemap: bool = False,
     sitemap_url: Optional[str] = None,
+    min_time_between_pages_ms: int = 0,
+    strip_tracking_params: bool = True,
 ) -> Dict[str, Any]:
     """Crawl and scan a website with axe-core."""
 
@@ -311,6 +343,8 @@ def run_accessibility_audit(
             wait_ms=wait_ms,
             use_sitemap=use_sitemap,
             sitemap_url=sitemap_url,
+            min_time_between_pages_ms=min_time_between_pages_ms,
+            strip_tracking_params=strip_tracking_params,
         )
         if not node_res.get("ok"):
             return {
@@ -365,13 +399,14 @@ def run_accessibility_audit(
 
     scanned: List[Dict[str, Any]] = []
     visited: Set[str] = set()
-    queue: List[str] = [start_url_n]
+    queue: List[str] = [_canonical_url(start_url_n, strip_tracking_params=strip_tracking_params)]
 
     if use_sitemap:
         seeds = _sitemap_seed_urls(start_url_n, sitemap_url, cap=max(25, max_pages * 5))
         for s in seeds:
-            if s not in queue:
-                queue.append(s)
+            c = _canonical_url(s, strip_tracking_params=strip_tracking_params)
+            if c not in queue:
+                queue.append(c)
 
     def pop_next() -> Optional[str]:
         while queue:
@@ -422,6 +457,8 @@ def run_accessibility_audit(
             if login_cfg.post_login_url_prefix and not page.url.startswith(login_cfg.post_login_url_prefix):
                 pass
 
+        last_nav = 0.0
+
         while len(scanned) < max_pages:
             url = pop_next()
             if url is None:
@@ -430,8 +467,20 @@ def run_accessibility_audit(
             visited.add(url)
 
             try:
+                if min_time_between_pages_ms:
+                    import time
+
+                    now = time.time() * 1000
+                    delta = now - last_nav
+                    if delta < min_time_between_pages_ms:
+                        time.sleep((min_time_between_pages_ms - delta) / 1000)
+                    last_nav = time.time() * 1000
+
                 page.goto(url, wait_until="domcontentloaded")
                 page.wait_for_timeout(wait_ms)
+
+                final_url = _canonical_url(page.url, strip_tracking_params=strip_tracking_params)
+                visited.add(final_url)
 
                 axe = Axe.from_page(page)
                 results = axe.run()
@@ -439,6 +488,7 @@ def run_accessibility_audit(
                 violations = results.get("violations") or []
                 page_entry: Dict[str, Any] = {
                     "url": url,
+                    "final_url": final_url,
                     "title": page.title(),
                     "violations_count": len(violations) if isinstance(violations, list) else 0,
                     "violations": violations,
@@ -448,8 +498,9 @@ def run_accessibility_audit(
                 hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
                 if isinstance(hrefs, list):
                     for link in _extract_links(url, [str(x) for x in hrefs]):
-                        if link not in visited and link not in queue:
-                            queue.append(link)
+                        c = _canonical_url(link, strip_tracking_params=strip_tracking_params)
+                        if c not in visited and c not in queue:
+                            queue.append(c)
 
             except Exception as e:
                 scanned.append({"url": url, "error": str(e)})
@@ -496,6 +547,8 @@ def run_multisite_accessibility_audit(
     output_path: Optional[str] = None,
     use_sitemap: bool = False,
     sitemap_url: Optional[str] = None,
+    min_time_between_pages_ms: int = 0,
+    strip_tracking_params: bool = True,
 ) -> Dict[str, Any]:
     """Scan multiple sites and write a combined JSON report."""
 
@@ -529,6 +582,8 @@ def run_multisite_accessibility_audit(
             output_path=None,
             use_sitemap=use_sitemap,
             sitemap_url=sitemap_url,
+            min_time_between_pages_ms=min_time_between_pages_ms,
+            strip_tracking_params=strip_tracking_params,
         )
         per_site.append(r)
         pages = r.get("pages")

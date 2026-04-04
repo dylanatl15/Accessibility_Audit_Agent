@@ -36,6 +36,7 @@ Ask only what you need to run a good audit:
 - Use `run_accessibility_audit` for a single-site scan.
 - Use `run_multisite_accessibility_audit` for multiple related domains/subdomains.
 - For deeper coverage when a site publishes a sitemap, enable `use_sitemap: true`.
+- If a site blocks fast crawling, set `min_time_between_pages_ms` (for politeness/rate limiting).
 - Prefer crawling a representative set of pages (e.g., top nav + key flows) rather than attempting an unbounded crawl.
 
 ## Document accessibility
