@@ -49,3 +49,9 @@ When the user asks to build or modify an agent:
 - Don't create overly complex abstractions — this is a learning environment.
 - Don't modify files in `.omni_code/skills/` unless the user explicitly asks.
 - Don't install packages without asking — students may have limited environments.
+
+## Git workflow (required)
+
+- Do not push directly to `main`.
+- Make changes on a feature branch, commit locally, push the branch, and open a PR.
+- Only merge after the user approves the PR.
