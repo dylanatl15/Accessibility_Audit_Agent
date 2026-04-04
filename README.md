@@ -48,7 +48,6 @@ omniagents run -c agent.yml --mode server --port 9494
 
 - DOJ Title II web/mobile rule summary: `docs/ADA_Title_II_Web_and_Mobile_App_Rule_Requirements.md`
 - WCAG 2.1 AA requirements checklist: `docs/WCAG_2_1_AA_Requirements.md`
-- Project improvement plan: `docs/Agent_Improvements_TODO_for_UTRGV_Compliance.md`
 
 ## Project Structure
 
