@@ -1,6 +1,8 @@
 # ADA Title II Web & Mobile App Accessibility Rule (DOJ Final Rule – Published Apr 24, 2024)
 
-Source (DOJ fact sheet): https://www.ada.gov/resources/2024-03-08-web-rule/
+Sources:
+- DOJ fact sheet (plain language): https://www.ada.gov/resources/2024-03-08-web-rule/
+- Official Federal Register publication (official PDF link from the fact sheet page): https://www.govinfo.gov/
 
 ## Who Must Comply
 - State and local governments (“public entities”) and their departments/agencies.
@@ -15,6 +17,8 @@ Source (DOJ fact sheet): https://www.ada.gov/resources/2024-03-08-web-rule/
 ## Technical Standard
 - WCAG 2.1 Level AA is the required technical standard for covered web content and mobile apps.
 - Equivalent facilitation is allowed if it provides the same or greater accessibility/usability.
+
+WCAG reference (technical requirements list): `docs/WCAG_2_1_AA_Requirements.md`
 
 ## Compliance Dates
 - 50,000+ population: April 24, 2026.
