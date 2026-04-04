@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -24,6 +25,27 @@ class _LoginConfig:
     password_selector: Optional[str]
     submit_selector: Optional[str]
     post_login_url_prefix: Optional[str]
+
+
+def _load_login_profile(name: str) -> Optional[_LoginConfig]:
+    key = re.sub(r"[^A-Za-z0-9]+", "_", name.strip()).upper()
+    prefix = f"A11Y_LOGIN_{key}_"
+
+    login_url = os.getenv(prefix + "URL")
+    username = os.getenv(prefix + "USERNAME")
+    password = os.getenv(prefix + "PASSWORD")
+    if not login_url or not username or not password:
+        return None
+
+    return _LoginConfig(
+        login_url=_normalize_url(login_url),
+        username=username,
+        password=password,
+        username_selector=os.getenv(prefix + "USERNAME_SELECTOR") or None,
+        password_selector=os.getenv(prefix + "PASSWORD_SELECTOR") or None,
+        submit_selector=os.getenv(prefix + "SUBMIT_SELECTOR") or None,
+        post_login_url_prefix=os.getenv(prefix + "POST_LOGIN_URL_PREFIX") or None,
+    )
 
 
 def _same_site(a: str, b: str) -> bool:
@@ -293,6 +315,7 @@ def run_accessibility_audit(
     same_domain_only: bool = True,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
+    login_profile: Optional[str] = None,
     login_url: Optional[str] = None,
     username: Optional[str] = None,
     password: Optional[str] = None,
@@ -315,6 +338,17 @@ def run_accessibility_audit(
         return {"ok": False, "error": "start_url is required"}
 
     login_cfg: Optional[_LoginConfig] = None
+    if login_profile and not (username or password or login_url):
+        loaded = _load_login_profile(login_profile)
+        if loaded is None:
+            key = re.sub(r"[^A-Za-z0-9]+", "_", login_profile.strip()).upper()
+            return {
+                "ok": False,
+                "error": f"Login profile '{login_profile}' not configured in environment.",
+                "hint": f"Set A11Y_LOGIN_{key}_URL, A11Y_LOGIN_{key}_USERNAME, A11Y_LOGIN_{key}_PASSWORD in .env",
+            }
+        login_cfg = loaded
+
     if (username is not None) or (password is not None) or (login_url is not None):
         if not username or not password:
             return {
@@ -549,6 +583,7 @@ def run_multisite_accessibility_audit(
     sitemap_url: Optional[str] = None,
     min_time_between_pages_ms: int = 0,
     strip_tracking_params: bool = True,
+    login_profile: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Scan multiple sites and write a combined JSON report."""
 
@@ -570,6 +605,7 @@ def run_multisite_accessibility_audit(
             same_domain_only=True,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
+            login_profile=login_profile,
             login_url=None,
             username=None,
             password=None,
