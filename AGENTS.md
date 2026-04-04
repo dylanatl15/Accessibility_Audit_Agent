@@ -55,3 +55,9 @@ When the user asks to build or modify an agent:
 - Do not push directly to `main`.
 - Make changes on a feature branch, commit locally, push the branch, and open a PR.
 - Only merge after the user approves the PR.
+
+## TODO tracking (required)
+
+- Maintain the project improvement backlog as a GitHub Issue checklist.
+- When an improvement is completed, mark it as completed in the checklist (or remove it).
+- Do not start work on items already marked completed.
