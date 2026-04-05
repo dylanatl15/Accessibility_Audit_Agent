@@ -138,30 +138,52 @@ def _sitemap_seed_urls(start_url: str, sitemap_url: Optional[str], cap: int) -> 
     if not start.scheme or not start.netloc:
         return seed
 
-    sm = sitemap_url or f"{start.scheme}://{start.netloc}/sitemap.xml"
-    try:
-        with urlopen(sm, timeout=10) as resp:
-            xml = resp.read().decode("utf-8", errors="ignore")
-    except Exception:
-        return seed
-
-    for m in re.finditer(r"<loc>\s*([^<\s]+)\s*</loc>", xml, flags=re.IGNORECASE):
-        if len(seed) >= cap:
-            break
-        loc = str(m.group(1)).strip()
+    def fetch_xml(url: str) -> Optional[str]:
         try:
-            u = urlparse(loc)
+            with urlopen(url, timeout=10) as resp:
+                return resp.read().decode("utf-8", errors="ignore")
         except Exception:
+            return None
+
+    def is_index(xml_text: str) -> bool:
+        return bool(re.search(r"<\s*sitemapindex[\s>]", xml_text or "", flags=re.IGNORECASE))
+
+    b = _base_domain(start.netloc.lower())
+
+    queue: List[str] = [sitemap_url or f"{start.scheme}://{start.netloc}/sitemap.xml"]
+    seen_sitemaps: Set[str] = set()
+
+    while queue and len(seed) < cap:
+        sm = queue.pop(0)
+        if sm in seen_sitemaps:
             continue
-        if u.scheme not in {"http", "https"}:
+        seen_sitemaps.add(sm)
+
+        xml = fetch_xml(sm)
+        if not xml:
             continue
-        b = _base_domain(start.netloc.lower())
-        h = u.netloc.lower()
-        if not (h == b or h.endswith("." + b)):
-            continue
-        cleaned = u._replace(fragment="").geturl()
-        if cleaned not in seed:
-            seed.append(cleaned)
+
+        sitemap_index = is_index(xml)
+        for m in re.finditer(r"<loc>\s*([^<\s]+)\s*</loc>", xml, flags=re.IGNORECASE):
+            if len(seed) >= cap:
+                break
+            loc = str(m.group(1)).strip()
+            try:
+                u = urlparse(loc)
+            except Exception:
+                continue
+            if u.scheme not in {"http", "https"}:
+                continue
+            cleaned = u._replace(fragment="").geturl()
+            if sitemap_index:
+                if cleaned not in seen_sitemaps:
+                    queue.append(cleaned)
+                continue
+            h = u.netloc.lower()
+            if not (h == b or h.endswith("." + b)):
+                continue
+            if cleaned not in seed:
+                seed.append(cleaned)
 
     return seed
 
