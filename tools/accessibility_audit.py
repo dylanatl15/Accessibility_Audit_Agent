@@ -191,6 +191,19 @@ def _write_json_report(path: Path, payload: Dict[str, Any]) -> Tuple[bool, Optio
         return False, str(e)
 
 
+def _scanned_urls(pages: Any) -> List[str]:
+    urls: List[str] = []
+    if not isinstance(pages, list):
+        return urls
+    for p in pages:
+        if not isinstance(p, dict):
+            continue
+        u = p.get("final_url") if isinstance(p.get("final_url"), str) else p.get("url")
+        if isinstance(u, str) and u and u not in urls:
+            urls.append(u)
+    return urls
+
+
 def _load_json_report(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
