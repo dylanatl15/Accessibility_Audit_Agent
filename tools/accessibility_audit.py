@@ -491,6 +491,7 @@ def run_accessibility_audit(
             "pages_scanned": len(pages),
             "pages": pages,
             "top_issues": summary,
+            "scanned_urls": _scanned_urls(pages),
         }
 
         report_path = Path(output_path).expanduser() if output_path else _default_report_path("web_a11y")
@@ -693,6 +694,7 @@ def run_accessibility_audit(
         "max_pages": max_pages,
         "pages_scanned": len(scanned),
         "pages": scanned,
+        "scanned_urls": _scanned_urls(scanned),
         "top_issues": summary,
         "export": {
             "note": "If you want, I can add a tool to write a JSON/HTML report file to disk.",
@@ -765,6 +767,13 @@ def run_multisite_accessibility_audit(
         "top_issues": _summarize_violations(all_violations),
     }
 
+    report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
+    ok, err = _write_json_report(report_path, combined)
+    combined["report_path"] = str(report_path)
+    if not ok:
+        combined["report_write_error"] = err
+
+    return combined
     report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
     ok, err = _write_json_report(report_path, combined)
     combined["report_path"] = str(report_path)

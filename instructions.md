@@ -85,3 +85,5 @@ Provide:
 - Top issues (prioritized) with fixes
 - Any pages requiring manual review
 - Clear next steps (what to fix first, and how to re-run the audit)
+
+After any web audit, end your response with a list of all scanned page URLs (from `scanned_urls`).
