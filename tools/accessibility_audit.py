@@ -43,6 +43,23 @@ def _same_site(a: str, b: str) -> bool:
     return (pa.scheme, pa.netloc) == (pb.scheme, pb.netloc)
 
 
+def _base_domain(host: str) -> str:
+    parts = [p for p in (host or "").split(".") if p]
+    if len(parts) < 2:
+        return host
+    return ".".join(parts[-2:])
+
+
+def _same_domain_or_subdomain(base_url: str, url: str) -> bool:
+    pb = urlparse(base_url)
+    pu = urlparse(url)
+    if not pb.netloc or not pu.netloc:
+        return False
+    b = _base_domain(pb.netloc.lower())
+    h = pu.netloc.lower()
+    return h == b or h.endswith("." + b)
+
+
 def _normalize_url(url: str) -> str:
     u = url.strip()
     if not u:
@@ -138,7 +155,9 @@ def _sitemap_seed_urls(start_url: str, sitemap_url: Optional[str], cap: int) -> 
             continue
         if u.scheme not in {"http", "https"}:
             continue
-        if u.netloc != start.netloc:
+        b = _base_domain(start.netloc.lower())
+        h = u.netloc.lower()
+        if not (h == b or h.endswith("." + b)):
             continue
         cleaned = u._replace(fragment="").geturl()
         if cleaned not in seed:
@@ -430,6 +449,7 @@ def run_accessibility_audit(
     start_url: str,
     max_pages: int = 25,
     same_domain_only: bool = True,
+    include_subdomains: bool = False,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     login_url: Optional[str] = None,
@@ -444,6 +464,7 @@ def run_accessibility_audit(
     output_path: Optional[str] = None,
     use_sitemap: bool = False,
     sitemap_url: Optional[str] = None,
+    auto_use_sitemap_on_stall: bool = True,
     min_time_between_pages_ms: int = 0,
     strip_tracking_params: bool = True,
 ) -> Dict[str, Any]:
@@ -475,6 +496,7 @@ def run_accessibility_audit(
             start_url=start_url_n,
             max_pages=max_pages,
             same_domain_only=same_domain_only,
+            include_subdomains=include_subdomains,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
             login_cfg=login_cfg,
@@ -482,6 +504,7 @@ def run_accessibility_audit(
             wait_ms=wait_ms,
             use_sitemap=use_sitemap,
             sitemap_url=sitemap_url,
+            auto_use_sitemap_on_stall=auto_use_sitemap_on_stall,
             min_time_between_pages_ms=min_time_between_pages_ms,
             strip_tracking_params=strip_tracking_params,
         )
@@ -561,9 +584,15 @@ def run_accessibility_audit(
             if _should_skip(url, include_url_patterns, exclude_url_patterns):
                 visited.add(url)
                 continue
-            if same_domain_only and not _same_site(start_url_n, url):
+            if same_domain_only:
+                if include_subdomains:
+                    if not _same_domain_or_subdomain(crawl_base_url, url):
+                        visited.add(url)
+                        continue
+                elif not _same_site(crawl_base_url, url):
+                    visited.add(url)
+                    continue
                 visited.add(url)
-                continue
             return url
         return None
 
@@ -680,12 +709,25 @@ def run_accessibility_audit(
 
                 hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
                 if isinstance(hrefs, list):
-                    for link in _extract_links(final_url, [str(x) for x in hrefs]):
+                    extracted = _extract_links(final_url, [str(x) for x in hrefs])
+                    if not extracted and auto_use_sitemap_on_stall and not use_sitemap and not scanned:
+                        seeds = _sitemap_seed_urls(crawl_base_url, sitemap_url, cap=max(25, max_pages * 5))
+                        for s in seeds:
+                            c = _canonical_url(s, strip_tracking_params=strip_tracking_params)
+                            if c not in queue and c not in visited:
+                                queue.append(c)
+                        extracted = _extract_links(final_url, [str(x) for x in hrefs])
+
+                    for link in extracted:
                         c = _canonical_url(link, strip_tracking_params=strip_tracking_params)
                         if _looks_like_login_url(c):
                             continue
-                        if same_domain_only and not _same_site(crawl_base_url, c):
-                            continue
+                        if same_domain_only:
+                            if include_subdomains:
+                                if not _same_domain_or_subdomain(crawl_base_url, c):
+                                    continue
+                            elif not _same_site(crawl_base_url, c):
+                                continue
                         if c not in visited and c not in queue:
                             queue.append(c)
 

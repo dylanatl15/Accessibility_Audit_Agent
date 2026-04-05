@@ -98,6 +98,24 @@ function sameSite(a, b) {
   }
 }
 
+function baseDomain(host) {
+  const parts = String(host || "").split(".").filter(Boolean);
+  if (parts.length < 2) return String(host || "");
+  return parts.slice(-2).join(".");
+}
+
+function sameDomainOrSubdomain(baseUrl, url) {
+  try {
+    const pb = new URL(baseUrl);
+    const pu = new URL(url);
+    const b = baseDomain(pb.hostname.toLowerCase());
+    const h = pu.hostname.toLowerCase();
+    return h === b || h.endsWith(`.${b}`);
+  } catch {
+    return false;
+  }
+}
+
 function shouldSkip(url, include, exclude) {
   if (exclude && exclude.length) {
     for (const p of exclude) {
@@ -178,12 +196,14 @@ if (!startUrl) {
 
 const maxPages = getInt("max_pages", 25);
 const sameDomainOnly = getBool("same_domain_only", true);
+const includeSubdomains = getBool("include_subdomains", false);
 const includePatterns = getJsonList("include_url_patterns");
 const excludePatterns = getJsonList("exclude_url_patterns");
 const headless = getBool("headless", true);
 const waitMs = getInt("wait_ms", 500);
 const useSitemap = getBool("use_sitemap", false);
 const sitemapUrlOverride = getArg("sitemap_url");
+const autoUseSitemapOnStall = getBool("auto_use_sitemap_on_stall", true);
 const minTimeBetweenPagesMs = getInt("min_time_between_pages_ms", 0);
 const stripTrackingParams = getBool("strip_tracking_params", true);
 
@@ -247,7 +267,16 @@ function popNext() {
       visited.add(c);
       continue;
     }
-    if (sameDomainOnly && !sameSite(crawlBaseUrl, url)) {
+    if (sameDomainOnly) {
+      if (includeSubdomains) {
+        if (!sameDomainOrSubdomain(crawlBaseUrl, url)) {
+          visited.add(c);
+          continue;
+        }
+      } else if (!sameSite(crawlBaseUrl, url)) {
+        visited.add(c);
+        continue;
+      }
       visited.add(c);
       continue;
     }
@@ -356,9 +385,20 @@ try {
       });
 
       const hrefs = await page.$$eval("a[href]", (els) => els.map((e) => e.getAttribute("href")));
-      for (const link of extractLinks(finalUrl, hrefs)) {
+      let extracted = extractLinks(finalUrl, hrefs);
+      if (!extracted.length && autoUseSitemapOnStall && !useSitemap && pages.length === 1) {
+        const sitemapUrls = await getSitemapUrls(crawlBaseUrl, sitemapUrlOverride, Math.max(25, maxPages * 5));
+        for (const u of sitemapUrls) {
+          const c = canonicalizeUrl(u, stripTrackingParams);
+          if (!visited.has(c) && !queue.includes(c)) queue.push(c);
+        }
+        extracted = extractLinks(finalUrl, hrefs);
+      }
+
+      for (const link of extracted) {
         const c = canonicalizeUrl(link, stripTrackingParams);
         if (looksLikeLoginUrl(c)) continue;
+        if (sameDomainOnly && includeSubdomains && !sameDomainOrSubdomain(crawlBaseUrl, c)) continue;
         if (!visited.has(c) && !queue.includes(c)) queue.push(c);
       }
     } catch (e) {
