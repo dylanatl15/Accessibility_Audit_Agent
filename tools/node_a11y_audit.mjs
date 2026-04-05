@@ -173,6 +173,16 @@ function extractLinks(baseUrl, hrefs) {
   return out;
 }
 
+function isDocumentUrl(url) {
+  try {
+    const u = new URL(url);
+    const p = (u.pathname || "").toLowerCase();
+    return p.endsWith(".pdf") || p.endsWith(".docx") || p.endsWith(".pptx");
+  } catch {
+    return false;
+  }
+}
+
 function getArg(name, dflt = undefined) {
   const idx = process.argv.indexOf(`--${name}`);
   if (idx === -1) return dflt;
@@ -256,6 +266,7 @@ function looksLikeMfa(pageUrl, pageText) {
 const visited = new Set();
 let queue = [startUrl];
 const pages = [];
+const documentUrls = new Set();
 
 let crawlBaseUrl = startUrl;
 
@@ -422,6 +433,10 @@ try {
       for (const link of extracted) {
         const c = canonicalizeUrl(link, stripTrackingParams);
         if (looksLikeLoginUrl(c)) continue;
+        if (isDocumentUrl(c)) {
+          documentUrls.add(c);
+          continue;
+        }
         if (sameDomainOnly && includeSubdomains && !sameDomainOrSubdomain(crawlBaseUrl, c)) continue;
         if (!visited.has(c) && !queue.includes(c)) queue.push(c);
       }
@@ -430,7 +445,7 @@ try {
     }
   }
 
-  console.log(JSON.stringify({ ok: true, pages }));
+  console.log(JSON.stringify({ ok: true, pages, documents: Array.from(documentUrls) }));
 } catch (e) {
   let msg = String(e);
   msg = msg.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
