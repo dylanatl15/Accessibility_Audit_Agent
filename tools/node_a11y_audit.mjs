@@ -277,8 +277,6 @@ function popNext() {
         visited.add(c);
         continue;
       }
-      visited.add(c);
-      continue;
     }
     return c;
   }
@@ -353,19 +351,22 @@ try {
       if (pages.length === 0) {
         crawlBaseUrl = finalUrl;
       }
-      if (sameDomainOnly && !sameSite(startUrl, finalUrl)) {
-        pages.push({
-          url,
-          final_url: finalUrl,
-          title: await page.title().catch(() => ""),
-          violations_count: 0,
-          violations: [],
-          note: "Redirected off-site (likely login); continuing public crawl.",
-        });
-        visited.add(finalUrl);
-        await page.goto(startUrl, { waitUntil: "domcontentloaded" });
-        await page.waitForTimeout(waitMs);
-        continue;
+      if (sameDomainOnly) {
+        const inScope = includeSubdomains ? sameDomainOrSubdomain(crawlBaseUrl, finalUrl) : sameSite(crawlBaseUrl, finalUrl);
+        if (!inScope) {
+          pages.push({
+            url,
+            final_url: finalUrl,
+            title: await page.title().catch(() => ""),
+            violations_count: 0,
+            violations: [],
+            note: "Redirected off-site (likely login); continuing public crawl.",
+          });
+          visited.add(finalUrl);
+          await page.goto(startUrl, { waitUntil: "domcontentloaded" });
+          await page.waitForTimeout(waitMs);
+          continue;
+        }
       }
       visited.add(finalUrl);
 

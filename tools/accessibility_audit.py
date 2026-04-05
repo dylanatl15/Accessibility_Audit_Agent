@@ -677,21 +677,23 @@ def run_accessibility_audit(
                 if not scanned:
                     crawl_base_url = final_url
 
-                if same_domain_only and not _same_site(start_url_n, final_url):
-                    scanned.append(
-                        {
-                            "url": url,
-                            "final_url": final_url,
-                            "title": page.title(),
-                            "violations_count": 0,
-                            "violations": [],
-                            "note": "Redirected off-site (likely login); continuing public crawl.",
-                        }
-                    )
-                    visited.add(final_url)
-                    page.goto(start_url_n, wait_until="domcontentloaded")
-                    page.wait_for_timeout(wait_ms)
-                    continue
+                if same_domain_only:
+                    in_scope = _same_domain_or_subdomain(crawl_base_url, final_url) if include_subdomains else _same_site(crawl_base_url, final_url)
+                    if not in_scope:
+                        scanned.append(
+                            {
+                                "url": url,
+                                "final_url": final_url,
+                                "title": page.title(),
+                                "violations_count": 0,
+                                "violations": [],
+                                "note": "Redirected off-site (likely login); continuing public crawl.",
+                            }
+                        )
+                        visited.add(final_url)
+                        page.goto(start_url_n, wait_until="domcontentloaded")
+                        page.wait_for_timeout(wait_ms)
+                        continue
                 visited.add(final_url)
 
                 axe = Axe.from_page(page)
