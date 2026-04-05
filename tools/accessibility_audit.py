@@ -357,6 +357,7 @@ def _run_node_audit(
     max_pages: int,
     same_domain_only: bool,
     include_subdomains: bool,
+    seed_urls: Optional[List[str]],
     include_url_patterns: Optional[List[str]],
     exclude_url_patterns: Optional[List[str]],
     login_cfg: Optional[_LoginConfig],
@@ -399,6 +400,9 @@ def _run_node_audit(
 
     if sitemap_url:
         cmd.extend(["--sitemap_url", sitemap_url])
+
+    if seed_urls is not None:
+        cmd.extend(["--seed_urls", json.dumps(seed_urls)])
 
     if include_url_patterns is not None:
         cmd.extend(["--include_url_patterns", json.dumps(include_url_patterns)])
@@ -478,6 +482,7 @@ def run_accessibility_audit(
     max_pages: int = 25,
     same_domain_only: bool = True,
     include_subdomains: bool = False,
+    seed_urls: Optional[List[str]] = None,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     login_url: Optional[str] = None,
@@ -525,6 +530,7 @@ def run_accessibility_audit(
             max_pages=max_pages,
             same_domain_only=same_domain_only,
             include_subdomains=include_subdomains,
+            seed_urls=seed_urls,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
             login_cfg=login_cfg,
@@ -590,7 +596,20 @@ def run_accessibility_audit(
 
     scanned: List[Dict[str, Any]] = []
     visited: Set[str] = set()
-    queue: List[str] = [_canonical_url(start_url_n, strip_tracking_params=strip_tracking_params)]
+    queue: List[str] = []
+    start_c = _canonical_url(start_url_n, strip_tracking_params=strip_tracking_params)
+    queue.append(start_c)
+
+    if seed_urls:
+        for s in seed_urls:
+            if not isinstance(s, str):
+                continue
+            sn = _normalize_url(s)
+            if not sn:
+                continue
+            c = _canonical_url(sn, strip_tracking_params=strip_tracking_params)
+            if c not in queue:
+                queue.append(c)
 
     crawl_base_url = start_url_n
 
@@ -800,6 +819,7 @@ def run_multisite_accessibility_audit(
     start_urls: List[str],
     max_pages_per_site: int = 25,
     include_subdomains: bool = False,
+    seed_urls: Optional[List[str]] = None,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     headless: bool = True,
@@ -830,6 +850,7 @@ def run_multisite_accessibility_audit(
             max_pages=max_pages_per_site,
             same_domain_only=True,
             include_subdomains=include_subdomains,
+            seed_urls=seed_urls,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
             login_url=None,

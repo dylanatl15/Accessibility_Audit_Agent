@@ -15,7 +15,7 @@ Goal: make this agent a reliable, repeatable pipeline for assessing and improvin
   - [x] support allowlist/denylist rules (paths, subdomains, query params).
 - Add sitemap and link-discovery support:
   - [x] optional ingestion of `sitemap.xml` and nested sitemaps.
-  - optional seed lists for high-value services pages.
+  - [x] optional seed lists for high-value services pages.
 - Add crawl governance controls:
   - max pages per site + overall cap.
   - per-host rate limiting and concurrency controls.
