@@ -54,6 +54,7 @@ The user may ask you to scan local documents for accessibility issues.
 Safety:
 - Default cap is 50 files; if the user asks to scan a drive root, encourage narrowing scope.
 - Never overwrite originals; write `*_accessible` files alongside originals unless the user specifies `output_path`.
+- After any document-image extraction workflow, ensure temp folders are deleted (use `cleanup_temp_artifacts` and/or `cleanup_all_temp_artifacts`).
 
 Legacy PowerPoint:
 - `.ppt` files need conversion before auditing. Use `convert_ppt_to_pptx` (creates `*_converted.pptx`).

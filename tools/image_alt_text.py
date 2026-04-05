@@ -34,6 +34,22 @@ def _tmp_root() -> Path:
     return root
 
 
+def _cleanup_tmp_root_contents() -> Dict[str, Any]:
+    root = _tmp_root()
+    deleted: List[str] = []
+    errors: List[str] = []
+    for p in root.iterdir():
+        try:
+            if p.is_dir():
+                shutil.rmtree(p)
+            else:
+                p.unlink()
+            deleted.append(str(p))
+        except Exception as e:
+            errors.append(f"{p}: {e}")
+    return {"ok": len(errors) == 0, "deleted": deleted, "errors": errors, "temp_root": str(root)}
+
+
 def _new_session_dir() -> Path:
     d = _tmp_root() / str(uuid.uuid4())
     d.mkdir(parents=True, exist_ok=False)
@@ -530,3 +546,10 @@ def cleanup_temp_artifacts(temp_dir: str) -> Dict[str, Any]:
         return {"ok": True, "deleted": True, "temp_dir": str(p), "message": "Temp dir deleted."}
     except Exception as e:
         return {"ok": False, "error": f"Failed to delete temp_dir: {e}", "temp_dir": str(p)}
+
+
+@function_tool
+def cleanup_all_temp_artifacts() -> Dict[str, Any]:
+    """Delete all temporary extraction folders under .tmp_a11y."""
+
+    return _cleanup_tmp_root_contents()
