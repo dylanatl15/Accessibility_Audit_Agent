@@ -5,6 +5,7 @@ instructions_file: instructions.md
 tools:
   - run_accessibility_audit
   - run_multisite_accessibility_audit
+  - diff_accessibility_reports
   - list_documents_for_a11y_scan
   - scan_documents_accessibility
   - propose_document_fixes
@@ -24,6 +25,8 @@ safe_agent_options:
   halt_on_rejection: true
   safe_tool_names:
     - run_accessibility_audit
+    - run_multisite_accessibility_audit
+    - diff_accessibility_reports
     - list_documents_for_a11y_scan
     - scan_documents_accessibility
     - propose_document_fixes

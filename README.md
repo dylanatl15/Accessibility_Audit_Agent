@@ -42,6 +42,7 @@ omniagents run -c agent.yml --mode server --port 9494
 - Crawl and scan multiple sites and write a combined JSON report (`run_multisite_accessibility_audit`).
 - Optionally seed crawls from `sitemap.xml` (`use_sitemap: true`).
 - Polite crawling controls: `min_time_between_pages_ms`, `strip_tracking_params`.
+- Compare two prior audit JSON reports (`diff_accessibility_reports`).
 - Login/SSO redirect pages are skipped to keep crawling public content.
 - Scan local documents for accessibility issues (`scan_documents_accessibility`).
 - Propose and apply certain automated document fixes (`propose_document_fixes`, `apply_document_fixes`).

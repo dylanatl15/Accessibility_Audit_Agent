@@ -191,6 +191,112 @@ def _write_json_report(path: Path, payload: Dict[str, Any]) -> Tuple[bool, Optio
         return False, str(e)
 
 
+def _load_json_report(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None, "Report JSON is not an object."
+        return data, None
+    except Exception as e:
+        return None, str(e)
+
+
+def _violation_counts(report: Dict[str, Any]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+
+    def add_violations(violations: Any):
+        if not isinstance(violations, list):
+            return
+        for v in violations:
+            if not isinstance(v, dict):
+                continue
+            rid = str(v.get("id") or "").strip()
+            if not rid:
+                continue
+            nodes = v.get("nodes")
+            n = len(nodes) if isinstance(nodes, list) else 1
+            counts[rid] = counts.get(rid, 0) + max(1, n)
+
+    pages = report.get("pages")
+    if isinstance(pages, list):
+        for p in pages:
+            if isinstance(p, dict):
+                add_violations(p.get("violations"))
+
+    sites = report.get("sites")
+    if isinstance(sites, list):
+        for s in sites:
+            if isinstance(s, dict):
+                inner_pages = s.get("pages")
+                if isinstance(inner_pages, list):
+                    for p in inner_pages:
+                        if isinstance(p, dict):
+                            add_violations(p.get("violations"))
+
+    return counts
+
+
+def _page_urls(report: Dict[str, Any]) -> Set[str]:
+    urls: Set[str] = set()
+    pages = report.get("pages")
+    if isinstance(pages, list):
+        for p in pages:
+            if isinstance(p, dict) and isinstance(p.get("url"), str):
+                urls.add(p["url"])
+    sites = report.get("sites")
+    if isinstance(sites, list):
+        for s in sites:
+            if isinstance(s, dict) and isinstance(s.get("pages"), list):
+                for p in s["pages"]:
+                    if isinstance(p, dict) and isinstance(p.get("url"), str):
+                        urls.add(p["url"])
+    return urls
+
+
+@function_tool
+def diff_accessibility_reports(old_report_path: str, new_report_path: str) -> Dict[str, Any]:
+    """Diff two JSON reports produced by this agent."""
+
+    old_p = Path(old_report_path).expanduser()
+    new_p = Path(new_report_path).expanduser()
+    if not old_p.exists() or not old_p.is_file():
+        return {"ok": False, "error": f"Not a file: {old_report_path}"}
+    if not new_p.exists() or not new_p.is_file():
+        return {"ok": False, "error": f"Not a file: {new_report_path}"}
+
+    old, err = _load_json_report(old_p)
+    if old is None:
+        return {"ok": False, "error": f"Failed to read old report: {err}"}
+    new, err = _load_json_report(new_p)
+    if new is None:
+        return {"ok": False, "error": f"Failed to read new report: {err}"}
+
+    old_counts = _violation_counts(old)
+    new_counts = _violation_counts(new)
+    all_rules = sorted(set(old_counts) | set(new_counts))
+    delta: List[Dict[str, Any]] = []
+    for rid in all_rules:
+        before = int(old_counts.get(rid, 0))
+        after = int(new_counts.get(rid, 0))
+        if before == after:
+            continue
+        delta.append({"id": rid, "before": before, "after": after, "delta": after - before})
+
+    added_pages = sorted(_page_urls(new) - _page_urls(old))
+    removed_pages = sorted(_page_urls(old) - _page_urls(new))
+
+    delta_sorted = sorted(delta, key=lambda x: (-abs(int(x.get("delta", 0))), str(x.get("id", ""))))
+
+    return {
+        "ok": True,
+        "old_report_path": str(old_p),
+        "new_report_path": str(new_p),
+        "pages_added": added_pages,
+        "pages_removed": removed_pages,
+        "rule_deltas": delta_sorted,
+    }
+
+
 def _run_node_audit(
     *,
     start_url: str,
