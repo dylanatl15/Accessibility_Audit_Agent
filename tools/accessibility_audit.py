@@ -673,7 +673,6 @@ def run_accessibility_audit(
                 page.wait_for_timeout(wait_ms)
 
                 final_url = _canonical_url(page.url, strip_tracking_params=strip_tracking_params)
-
                 if not scanned:
                     crawl_base_url = final_url
 
@@ -772,6 +771,7 @@ def run_accessibility_audit(
 def run_multisite_accessibility_audit(
     start_urls: List[str],
     max_pages_per_site: int = 25,
+    include_subdomains: bool = False,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     headless: bool = True,
@@ -801,6 +801,7 @@ def run_multisite_accessibility_audit(
             start_url=u,
             max_pages=max_pages_per_site,
             same_domain_only=True,
+            include_subdomains=include_subdomains,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
             login_url=None,

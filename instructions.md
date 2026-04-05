@@ -82,6 +82,7 @@ If the user wants high-quality alt text for images in DOCX/PPTX:
 Provide:
 
 - High-level summary (pages scanned, total violations by impact, top rule IDs)
+- Full list of pages scanned (final URLs), in scan order
 - Top issues (prioritized) with fixes
 - Any pages requiring manual review
 - Clear next steps (what to fix first, and how to re-run the audit)

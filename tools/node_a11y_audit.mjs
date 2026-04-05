@@ -263,17 +263,17 @@ function popNext() {
       visited.add(c);
       continue;
     }
-    if (shouldSkip(url, includePatterns, excludePatterns)) {
+    if (shouldSkip(c, includePatterns, excludePatterns)) {
       visited.add(c);
       continue;
     }
     if (sameDomainOnly) {
       if (includeSubdomains) {
-        if (!sameDomainOrSubdomain(crawlBaseUrl, url)) {
+        if (!sameDomainOrSubdomain(crawlBaseUrl, c)) {
           visited.add(c);
           continue;
         }
-      } else if (!sameSite(crawlBaseUrl, url)) {
+      } else if (!sameSite(crawlBaseUrl, c)) {
         visited.add(c);
         continue;
       }
