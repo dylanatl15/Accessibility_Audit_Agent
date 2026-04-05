@@ -214,6 +214,7 @@ if (!startUrl) {
 const maxPages = getInt("max_pages", 25);
 const sameDomainOnly = getBool("same_domain_only", true);
 const includeSubdomains = getBool("include_subdomains", false);
+const seedUrls = getJsonList("seed_urls");
 const includePatterns = getJsonList("include_url_patterns");
 const excludePatterns = getJsonList("exclude_url_patterns");
 const headless = getBool("headless", true);
@@ -308,6 +309,11 @@ try {
       const seeded = [startUrl, ...sitemapUrls].map((u) => canonicalizeUrl(u, stripTrackingParams));
       queue = Array.from(new Set(seeded));
     }
+  }
+
+  if (seedUrls && seedUrls.length) {
+    const seeded = [startUrl, ...seedUrls].map((u) => canonicalizeUrl(u, stripTrackingParams));
+    queue = Array.from(new Set([...seeded, ...queue]));
   }
 
   browser = await chromium.launch({ headless });
