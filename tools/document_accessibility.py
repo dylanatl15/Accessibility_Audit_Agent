@@ -652,7 +652,7 @@ def scan_documents_accessibility(
         if i.fixable:
             fixable += 1
 
-    return {
+    res: Dict[str, Any] = {
         "ok": True,
         "standard_target": "WCAG 2.2 AA",
         "pdf_standard": "PDF/UA (best-effort)",
@@ -666,6 +666,15 @@ def scan_documents_accessibility(
         },
         "files": per_file,
     }
+
+    try:
+        from tools.image_alt_text import _cleanup_tmp_root_contents
+
+        res["temp_cleanup"] = _cleanup_tmp_root_contents()
+    except Exception as e:
+        res["temp_cleanup"] = {"ok": False, "error": str(e)}
+
+    return res
 
 
 @function_tool

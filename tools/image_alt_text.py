@@ -38,10 +38,18 @@ def _cleanup_tmp_root_contents() -> Dict[str, Any]:
     root = _tmp_root()
     deleted: List[str] = []
     errors: List[str] = []
+
+    def onerror(func, path, exc_info):
+        try:
+            os.chmod(path, 0o666)
+            func(path)
+        except Exception as e:
+            errors.append(f"{path}: {e}")
+
     for p in root.iterdir():
         try:
             if p.is_dir():
-                shutil.rmtree(p)
+                shutil.rmtree(p, onerror=onerror)
             else:
                 p.unlink()
             deleted.append(str(p))
