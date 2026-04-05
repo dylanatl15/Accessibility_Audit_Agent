@@ -729,6 +729,7 @@ def run_multisite_accessibility_audit(
 
     per_site: List[Dict[str, Any]] = []
     all_violations: List[Dict[str, Any]] = []
+    all_urls: List[str] = []
 
     for u in cleaned:
         r = run_accessibility_audit._original_func(
@@ -753,6 +754,11 @@ def run_multisite_accessibility_audit(
             strip_tracking_params=strip_tracking_params,
         )
         per_site.append(r)
+        scanned_urls = r.get("scanned_urls") if isinstance(r, dict) else None
+        if isinstance(scanned_urls, list):
+            for su in scanned_urls:
+                if isinstance(su, str) and su and su not in all_urls:
+                    all_urls.append(su)
         pages = r.get("pages")
         if isinstance(pages, list):
             for item in pages:
@@ -765,15 +771,9 @@ def run_multisite_accessibility_audit(
         "also_relevant": ["Section 508 (US)", "EN 301 549 (EU)"],
         "sites": per_site,
         "top_issues": _summarize_violations(all_violations),
+        "scanned_urls": all_urls,
     }
 
-    report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
-    ok, err = _write_json_report(report_path, combined)
-    combined["report_path"] = str(report_path)
-    if not ok:
-        combined["report_write_error"] = err
-
-    return combined
     report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
     ok, err = _write_json_report(report_path, combined)
     combined["report_path"] = str(report_path)
