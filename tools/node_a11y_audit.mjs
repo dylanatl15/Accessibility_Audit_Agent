@@ -113,6 +113,14 @@ function shouldSkip(url, include, exclude) {
   return false;
 }
 
+function looksLikeLoginUrl(url) {
+  const u = String(url || "").toLowerCase();
+  if (u.includes("/c/portal/login")) return true;
+  if (u.includes("login.microsoftonline.com")) return true;
+  if (u.includes("login.live.com")) return true;
+  return false;
+}
+
 function extractLinks(baseUrl, hrefs) {
   const out = [];
   for (const href of hrefs || []) {
@@ -217,6 +225,10 @@ function popNext() {
     if (!url) continue;
     const c = canonicalizeUrl(url, stripTrackingParams);
     if (visited.has(c)) continue;
+    if (looksLikeLoginUrl(c)) {
+      visited.add(c);
+      continue;
+    }
     if (shouldSkip(url, includePatterns, excludePatterns)) {
       visited.add(c);
       continue;
@@ -279,6 +291,20 @@ try {
       await page.waitForTimeout(waitMs);
 
       const finalUrl = canonicalizeUrl(page.url(), stripTrackingParams);
+      if (sameDomainOnly && !sameSite(startUrl, finalUrl)) {
+        pages.push({
+          url,
+          final_url: finalUrl,
+          title: await page.title().catch(() => ""),
+          violations_count: 0,
+          violations: [],
+          note: "Redirected off-site (likely login); continuing public crawl.",
+        });
+        visited.add(finalUrl);
+        await page.goto(startUrl, { waitUntil: "domcontentloaded" });
+        await page.waitForTimeout(waitMs);
+        continue;
+      }
       visited.add(finalUrl);
 
       await page.addScriptTag({ content: axeSource });
@@ -299,6 +325,7 @@ try {
       const hrefs = await page.$$eval("a[href]", (els) => els.map((e) => e.getAttribute("href")));
       for (const link of extractLinks(url, hrefs)) {
         const c = canonicalizeUrl(link, stripTrackingParams);
+        if (looksLikeLoginUrl(c)) continue;
         if (!visited.has(c) && !queue.includes(c)) queue.push(c);
       }
     } catch (e) {

@@ -95,6 +95,15 @@ def _extract_links(base_url: str, hrefs: List[str]) -> List[str]:
     return out
 
 
+def _looks_like_login_url(url: str) -> bool:
+    u = (url or "").lower()
+    if "/c/portal/login" in u:
+        return True
+    if "login.microsoftonline.com" in u or "login.live.com" in u:
+        return True
+    return False
+
+
 def _sitemap_seed_urls(start_url: str, sitemap_url: Optional[str], cap: int) -> List[str]:
     seed: List[str] = []
     start = urlparse(start_url)
@@ -413,6 +422,9 @@ def run_accessibility_audit(
             url = queue.pop(0)
             if url in visited:
                 continue
+            if _looks_like_login_url(url):
+                visited.add(url)
+                continue
             if _should_skip(url, include_url_patterns, exclude_url_patterns):
                 visited.add(url)
                 continue
@@ -480,6 +492,21 @@ def run_accessibility_audit(
                 page.wait_for_timeout(wait_ms)
 
                 final_url = _canonical_url(page.url, strip_tracking_params=strip_tracking_params)
+                if same_domain_only and not _same_site(start_url_n, final_url):
+                    scanned.append(
+                        {
+                            "url": url,
+                            "final_url": final_url,
+                            "title": page.title(),
+                            "violations_count": 0,
+                            "violations": [],
+                            "note": "Redirected off-site (likely login); continuing public crawl.",
+                        }
+                    )
+                    visited.add(final_url)
+                    page.goto(start_url_n, wait_until="domcontentloaded")
+                    page.wait_for_timeout(wait_ms)
+                    continue
                 visited.add(final_url)
 
                 axe = Axe.from_page(page)
@@ -499,6 +526,8 @@ def run_accessibility_audit(
                 if isinstance(hrefs, list):
                     for link in _extract_links(url, [str(x) for x in hrefs]):
                         c = _canonical_url(link, strip_tracking_params=strip_tracking_params)
+                        if _looks_like_login_url(c):
+                            continue
                         if c not in visited and c not in queue:
                             queue.append(c)
 
