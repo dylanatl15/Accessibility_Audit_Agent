@@ -17,7 +17,7 @@ Goal: make this agent a reliable, repeatable pipeline for assessing and improvin
   - [x] optional ingestion of `sitemap.xml` and nested sitemaps.
   - [x] optional seed lists for high-value services pages.
 - Add crawl governance controls:
-  - max pages per site + overall cap.
+  - [x] max pages per site + overall cap.
   - per-host rate limiting and concurrency controls.
   - deduplication (canonicalization rules, ignore tracking params).
   - robust handling of redirects, localization variants, and session-specific URLs.

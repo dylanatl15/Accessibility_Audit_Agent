@@ -818,6 +818,7 @@ def run_accessibility_audit(
 def run_multisite_accessibility_audit(
     start_urls: List[str],
     max_pages_per_site: int = 25,
+    max_total_pages: Optional[int] = None,
     include_subdomains: bool = False,
     seed_urls: Optional[List[str]] = None,
     include_url_patterns: Optional[List[str]] = None,
@@ -844,10 +845,19 @@ def run_multisite_accessibility_audit(
     all_violations: List[Dict[str, Any]] = []
     all_urls: List[str] = []
 
+    remaining = max_total_pages if (isinstance(max_total_pages, int) and max_total_pages > 0) else None
+
     for u in cleaned:
+        if remaining is not None and remaining <= 0:
+            break
+
+        max_pages = max_pages_per_site
+        if remaining is not None:
+            max_pages = min(max_pages, remaining)
+
         r = run_accessibility_audit._original_func(
             start_url=u,
-            max_pages=max_pages_per_site,
+            max_pages=max_pages,
             same_domain_only=True,
             include_subdomains=include_subdomains,
             seed_urls=seed_urls,
@@ -880,6 +890,10 @@ def run_multisite_accessibility_audit(
                 if isinstance(item, dict) and isinstance(item.get("violations"), list):
                     all_violations.extend(item["violations"])
 
+        pages_scanned = r.get("pages_scanned") if isinstance(r, dict) else None
+        if remaining is not None and isinstance(pages_scanned, int):
+            remaining -= pages_scanned
+
     combined: Dict[str, Any] = {
         "ok": True,
         "standard_target": _standard_target(),
@@ -887,6 +901,9 @@ def run_multisite_accessibility_audit(
         "sites": per_site,
         "top_issues": _summarize_violations(all_violations),
         "scanned_urls": all_urls,
+        "max_pages_per_site": max_pages_per_site,
+        "max_total_pages": max_total_pages,
+        "pages_scanned_total": sum(int(s.get("pages_scanned", 0)) for s in per_site if isinstance(s, dict)),
     }
 
     report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
