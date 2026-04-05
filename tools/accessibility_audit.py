@@ -48,6 +48,24 @@ def _load_login_profile(name: str) -> Optional[_LoginConfig]:
     )
 
 
+def _detect_single_ready_login_profile() -> Optional[str]:
+    profiles: Dict[str, Dict[str, bool]] = {}
+    for k in os.environ.keys():
+        if not k.startswith("A11Y_LOGIN_"):
+            continue
+        rest = k[len("A11Y_LOGIN_") :]
+        if "_" not in rest:
+            continue
+        name, field = rest.split("_", 1)
+        if not name or not field:
+            continue
+        entry = profiles.setdefault(name.lower(), {})
+        entry[field.lower()] = True
+
+    ready = [name for name, fields in profiles.items() if fields.get("url") and fields.get("username") and fields.get("password")]
+    return ready[0] if len(ready) == 1 else None
+
+
 @function_tool
 def list_login_profiles() -> Dict[str, Any]:
     """List configured login profiles from environment variables."""
@@ -373,6 +391,13 @@ def run_accessibility_audit(
                 "hint": f"Set A11Y_LOGIN_{key}_URL, A11Y_LOGIN_{key}_USERNAME, A11Y_LOGIN_{key}_PASSWORD in .env",
             }
         login_cfg = loaded
+
+    if login_cfg is None and not (username or password or login_url) and not login_profile:
+        detected = _detect_single_ready_login_profile()
+        if detected:
+            loaded = _load_login_profile(detected)
+            if loaded is not None:
+                login_cfg = loaded
 
     if (username is not None) or (password is not None) or (login_url is not None):
         if not username or not password:
