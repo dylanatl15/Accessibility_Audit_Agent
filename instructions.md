@@ -83,6 +83,11 @@ Provide:
 
 - High-level summary (pages scanned, total violations by impact, top rule IDs)
 - Full list of pages scanned (final URLs), in scan order
+- If `linked_documents` is present: a “Linked Documents” section with:
+  - number of document URLs discovered
+  - number downloaded + sanitized successfully
+  - number skipped/failed (with brief reasons)
+  - document scan summary (issue count by severity) and the top 3 document issues
 - Top issues (prioritized) with fixes
 - Any pages requiring manual review
 - Clear next steps (what to fix first, and how to re-run the audit)
