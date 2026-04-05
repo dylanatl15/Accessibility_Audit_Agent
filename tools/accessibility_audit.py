@@ -16,7 +16,6 @@ from urllib.request import urlopen
 
 from omniagents import function_tool
 
-from tools.document_accessibility import scan_documents_accessibility
 
 
 @dataclass(frozen=True)
@@ -685,6 +684,8 @@ def run_accessibility_audit(
                         continue
 
                     downloaded.append({"url": u, "ok": True, "sanitized_path": str(clean_path)})
+
+                from tools.document_accessibility import scan_documents_accessibility
 
                 scan_res = scan_documents_accessibility._original_func(
                     root_dir=str(tmp_dir),
