@@ -43,6 +43,23 @@ def _same_site(a: str, b: str) -> bool:
     return (pa.scheme, pa.netloc) == (pb.scheme, pb.netloc)
 
 
+def _base_domain(host: str) -> str:
+    parts = [p for p in (host or "").split(".") if p]
+    if len(parts) < 2:
+        return host
+    return ".".join(parts[-2:])
+
+
+def _same_domain_or_subdomain(base_url: str, url: str) -> bool:
+    pb = urlparse(base_url)
+    pu = urlparse(url)
+    if not pb.netloc or not pu.netloc:
+        return False
+    b = _base_domain(pb.netloc.lower())
+    h = pu.netloc.lower()
+    return h == b or h.endswith("." + b)
+
+
 def _normalize_url(url: str) -> str:
     u = url.strip()
     if not u:
@@ -138,7 +155,9 @@ def _sitemap_seed_urls(start_url: str, sitemap_url: Optional[str], cap: int) -> 
             continue
         if u.scheme not in {"http", "https"}:
             continue
-        if u.netloc != start.netloc:
+        b = _base_domain(start.netloc.lower())
+        h = u.netloc.lower()
+        if not (h == b or h.endswith("." + b)):
             continue
         cleaned = u._replace(fragment="").geturl()
         if cleaned not in seed:
@@ -191,11 +210,131 @@ def _write_json_report(path: Path, payload: Dict[str, Any]) -> Tuple[bool, Optio
         return False, str(e)
 
 
+def _scanned_urls(pages: Any) -> List[str]:
+    urls: List[str] = []
+    if not isinstance(pages, list):
+        return urls
+    for p in pages:
+        if not isinstance(p, dict):
+            continue
+        u = p.get("final_url") if isinstance(p.get("final_url"), str) else p.get("url")
+        if isinstance(u, str) and u and u not in urls:
+            urls.append(u)
+    return urls
+
+
+def _load_json_report(path: Path) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return None, "Report JSON is not an object."
+        return data, None
+    except Exception as e:
+        return None, str(e)
+
+
+def _violation_counts(report: Dict[str, Any]) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+
+    def add_violations(violations: Any):
+        if not isinstance(violations, list):
+            return
+        for v in violations:
+            if not isinstance(v, dict):
+                continue
+            rid = str(v.get("id") or "").strip()
+            if not rid:
+                continue
+            nodes = v.get("nodes")
+            n = len(nodes) if isinstance(nodes, list) else 1
+            counts[rid] = counts.get(rid, 0) + max(1, n)
+
+    pages = report.get("pages")
+    if isinstance(pages, list):
+        for p in pages:
+            if isinstance(p, dict):
+                add_violations(p.get("violations"))
+
+    sites = report.get("sites")
+    if isinstance(sites, list):
+        for s in sites:
+            if isinstance(s, dict):
+                inner_pages = s.get("pages")
+                if isinstance(inner_pages, list):
+                    for p in inner_pages:
+                        if isinstance(p, dict):
+                            add_violations(p.get("violations"))
+
+    return counts
+
+
+def _page_urls(report: Dict[str, Any]) -> Set[str]:
+    urls: Set[str] = set()
+    pages = report.get("pages")
+    if isinstance(pages, list):
+        for p in pages:
+            if isinstance(p, dict) and isinstance(p.get("url"), str):
+                urls.add(p["url"])
+    sites = report.get("sites")
+    if isinstance(sites, list):
+        for s in sites:
+            if isinstance(s, dict) and isinstance(s.get("pages"), list):
+                for p in s["pages"]:
+                    if isinstance(p, dict) and isinstance(p.get("url"), str):
+                        urls.add(p["url"])
+    return urls
+
+
+@function_tool
+def diff_accessibility_reports(old_report_path: str, new_report_path: str) -> Dict[str, Any]:
+    """Diff two JSON reports produced by this agent."""
+
+    old_p = Path(old_report_path).expanduser()
+    new_p = Path(new_report_path).expanduser()
+    if not old_p.exists() or not old_p.is_file():
+        return {"ok": False, "error": f"Not a file: {old_report_path}"}
+    if not new_p.exists() or not new_p.is_file():
+        return {"ok": False, "error": f"Not a file: {new_report_path}"}
+
+    old, err = _load_json_report(old_p)
+    if old is None:
+        return {"ok": False, "error": f"Failed to read old report: {err}"}
+    new, err = _load_json_report(new_p)
+    if new is None:
+        return {"ok": False, "error": f"Failed to read new report: {err}"}
+
+    old_counts = _violation_counts(old)
+    new_counts = _violation_counts(new)
+    all_rules = sorted(set(old_counts) | set(new_counts))
+    delta: List[Dict[str, Any]] = []
+    for rid in all_rules:
+        before = int(old_counts.get(rid, 0))
+        after = int(new_counts.get(rid, 0))
+        if before == after:
+            continue
+        delta.append({"id": rid, "before": before, "after": after, "delta": after - before})
+
+    added_pages = sorted(_page_urls(new) - _page_urls(old))
+    removed_pages = sorted(_page_urls(old) - _page_urls(new))
+
+    delta_sorted = sorted(delta, key=lambda x: (-abs(int(x.get("delta", 0))), str(x.get("id", ""))))
+
+    return {
+        "ok": True,
+        "old_report_path": str(old_p),
+        "new_report_path": str(new_p),
+        "pages_added": added_pages,
+        "pages_removed": removed_pages,
+        "rule_deltas": delta_sorted,
+    }
+
+
 def _run_node_audit(
     *,
     start_url: str,
     max_pages: int,
     same_domain_only: bool,
+    include_subdomains: bool,
     include_url_patterns: Optional[List[str]],
     exclude_url_patterns: Optional[List[str]],
     login_cfg: Optional[_LoginConfig],
@@ -203,6 +342,7 @@ def _run_node_audit(
     wait_ms: int,
     use_sitemap: bool,
     sitemap_url: Optional[str],
+    auto_use_sitemap_on_stall: bool,
     min_time_between_pages_ms: int,
     strip_tracking_params: bool,
 ) -> Dict[str, Any]:
@@ -219,12 +359,16 @@ def _run_node_audit(
         str(max_pages),
         "--same_domain_only",
         "true" if same_domain_only else "false",
+        "--include_subdomains",
+        "true" if include_subdomains else "false",
         "--headless",
         "true" if headless else "false",
         "--wait_ms",
         str(wait_ms),
         "--use_sitemap",
         "true" if use_sitemap else "false",
+        "--auto_use_sitemap_on_stall",
+        "true" if auto_use_sitemap_on_stall else "false",
         "--min_time_between_pages_ms",
         str(int(min_time_between_pages_ms)),
         "--strip_tracking_params",
@@ -311,6 +455,7 @@ def run_accessibility_audit(
     start_url: str,
     max_pages: int = 25,
     same_domain_only: bool = True,
+    include_subdomains: bool = False,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     login_url: Optional[str] = None,
@@ -325,6 +470,7 @@ def run_accessibility_audit(
     output_path: Optional[str] = None,
     use_sitemap: bool = False,
     sitemap_url: Optional[str] = None,
+    auto_use_sitemap_on_stall: bool = True,
     min_time_between_pages_ms: int = 0,
     strip_tracking_params: bool = True,
 ) -> Dict[str, Any]:
@@ -356,6 +502,7 @@ def run_accessibility_audit(
             start_url=start_url_n,
             max_pages=max_pages,
             same_domain_only=same_domain_only,
+            include_subdomains=include_subdomains,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
             login_cfg=login_cfg,
@@ -363,6 +510,7 @@ def run_accessibility_audit(
             wait_ms=wait_ms,
             use_sitemap=use_sitemap,
             sitemap_url=sitemap_url,
+            auto_use_sitemap_on_stall=auto_use_sitemap_on_stall,
             min_time_between_pages_ms=min_time_between_pages_ms,
             strip_tracking_params=strip_tracking_params,
         )
@@ -385,6 +533,7 @@ def run_accessibility_audit(
             "pages_scanned": len(pages),
             "pages": pages,
             "top_issues": summary,
+            "scanned_urls": _scanned_urls(pages),
         }
 
         report_path = Path(output_path).expanduser() if output_path else _default_report_path("web_a11y")
@@ -421,6 +570,8 @@ def run_accessibility_audit(
     visited: Set[str] = set()
     queue: List[str] = [_canonical_url(start_url_n, strip_tracking_params=strip_tracking_params)]
 
+    crawl_base_url = start_url_n
+
     if use_sitemap:
         seeds = _sitemap_seed_urls(start_url_n, sitemap_url, cap=max(25, max_pages * 5))
         for s in seeds:
@@ -439,9 +590,15 @@ def run_accessibility_audit(
             if _should_skip(url, include_url_patterns, exclude_url_patterns):
                 visited.add(url)
                 continue
-            if same_domain_only and not _same_site(start_url_n, url):
+            if same_domain_only:
+                if include_subdomains:
+                    if not _same_domain_or_subdomain(crawl_base_url, url):
+                        visited.add(url)
+                        continue
+                elif not _same_site(crawl_base_url, url):
+                    visited.add(url)
+                    continue
                 visited.add(url)
-                continue
             return url
         return None
 
@@ -522,21 +679,26 @@ def run_accessibility_audit(
                 page.wait_for_timeout(wait_ms)
 
                 final_url = _canonical_url(page.url, strip_tracking_params=strip_tracking_params)
-                if same_domain_only and not _same_site(start_url_n, final_url):
-                    scanned.append(
-                        {
-                            "url": url,
-                            "final_url": final_url,
-                            "title": page.title(),
-                            "violations_count": 0,
-                            "violations": [],
-                            "note": "Redirected off-site (likely login); continuing public crawl.",
-                        }
-                    )
-                    visited.add(final_url)
-                    page.goto(start_url_n, wait_until="domcontentloaded")
-                    page.wait_for_timeout(wait_ms)
-                    continue
+                if not scanned:
+                    crawl_base_url = final_url
+
+                if same_domain_only:
+                    in_scope = _same_domain_or_subdomain(crawl_base_url, final_url) if include_subdomains else _same_site(crawl_base_url, final_url)
+                    if not in_scope:
+                        scanned.append(
+                            {
+                                "url": url,
+                                "final_url": final_url,
+                                "title": page.title(),
+                                "violations_count": 0,
+                                "violations": [],
+                                "note": "Redirected off-site (likely login); continuing public crawl.",
+                            }
+                        )
+                        visited.add(final_url)
+                        page.goto(start_url_n, wait_until="domcontentloaded")
+                        page.wait_for_timeout(wait_ms)
+                        continue
                 visited.add(final_url)
 
                 axe = Axe.from_page(page)
@@ -554,10 +716,25 @@ def run_accessibility_audit(
 
                 hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
                 if isinstance(hrefs, list):
-                    for link in _extract_links(url, [str(x) for x in hrefs]):
+                    extracted = _extract_links(final_url, [str(x) for x in hrefs])
+                    if not extracted and auto_use_sitemap_on_stall and not use_sitemap and not scanned:
+                        seeds = _sitemap_seed_urls(crawl_base_url, sitemap_url, cap=max(25, max_pages * 5))
+                        for s in seeds:
+                            c = _canonical_url(s, strip_tracking_params=strip_tracking_params)
+                            if c not in queue and c not in visited:
+                                queue.append(c)
+                        extracted = _extract_links(final_url, [str(x) for x in hrefs])
+
+                    for link in extracted:
                         c = _canonical_url(link, strip_tracking_params=strip_tracking_params)
                         if _looks_like_login_url(c):
                             continue
+                        if same_domain_only:
+                            if include_subdomains:
+                                if not _same_domain_or_subdomain(crawl_base_url, c):
+                                    continue
+                            elif not _same_site(crawl_base_url, c):
+                                continue
                         if c not in visited and c not in queue:
                             queue.append(c)
 
@@ -587,6 +764,7 @@ def run_accessibility_audit(
         "max_pages": max_pages,
         "pages_scanned": len(scanned),
         "pages": scanned,
+        "scanned_urls": _scanned_urls(scanned),
         "top_issues": summary,
         "export": {
             "note": "If you want, I can add a tool to write a JSON/HTML report file to disk.",
@@ -599,6 +777,7 @@ def run_accessibility_audit(
 def run_multisite_accessibility_audit(
     start_urls: List[str],
     max_pages_per_site: int = 25,
+    include_subdomains: bool = False,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     headless: bool = True,
@@ -621,12 +800,14 @@ def run_multisite_accessibility_audit(
 
     per_site: List[Dict[str, Any]] = []
     all_violations: List[Dict[str, Any]] = []
+    all_urls: List[str] = []
 
     for u in cleaned:
         r = run_accessibility_audit._original_func(
             start_url=u,
             max_pages=max_pages_per_site,
             same_domain_only=True,
+            include_subdomains=include_subdomains,
             include_url_patterns=include_url_patterns,
             exclude_url_patterns=exclude_url_patterns,
             login_url=None,
@@ -645,6 +826,11 @@ def run_multisite_accessibility_audit(
             strip_tracking_params=strip_tracking_params,
         )
         per_site.append(r)
+        scanned_urls = r.get("scanned_urls") if isinstance(r, dict) else None
+        if isinstance(scanned_urls, list):
+            for su in scanned_urls:
+                if isinstance(su, str) and su and su not in all_urls:
+                    all_urls.append(su)
         pages = r.get("pages")
         if isinstance(pages, list):
             for item in pages:
@@ -657,6 +843,7 @@ def run_multisite_accessibility_audit(
         "also_relevant": ["Section 508 (US)", "EN 301 549 (EU)"],
         "sites": per_site,
         "top_issues": _summarize_violations(all_violations),
+        "scanned_urls": all_urls,
     }
 
     report_path = Path(output_path).expanduser() if output_path else _default_report_path("multisite_web_a11y")
