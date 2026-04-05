@@ -203,6 +203,18 @@ if (loginEnabled && (!username || !password)) {
 
 const loginUrl = normalizeUrl(loginUrlRaw || startUrl);
 
+function looksLikeMfa(pageUrl, pageText) {
+  const u = String(pageUrl || "").toLowerCase();
+  const t = String(pageText || "").toLowerCase();
+  if (u.includes("login.microsoftonline.com") || u.includes("login.live.com")) {
+    if (t.includes("approve sign in request") || t.includes("enter code") || t.includes("verification code") || t.includes("microsoft authenticator")) {
+      return true;
+    }
+  }
+  if (t.includes("two-step verification") || t.includes("multi-factor") || t.includes("mfa")) return true;
+  return false;
+}
+
 const visited = new Set();
 let queue = [startUrl];
 const pages = [];
@@ -276,6 +288,21 @@ try {
 
     if (postLoginUrlPrefix && !page.url().startsWith(normalizeUrl(postLoginUrlPrefix))) {
       null;
+    }
+
+    const postLoginText = await page.textContent("body").catch(() => "");
+    const mfa = looksLikeMfa(page.url(), postLoginText);
+    if (mfa) {
+      pages.push({
+        url: loginUrl,
+        title: await page.title().catch(() => ""),
+        violations_count: 0,
+        violations: [],
+        note: "Login requires 2FA; continuing with public crawl only.",
+        login_status: "2fa_required",
+      });
+      await page.goto(startUrl, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(waitMs);
     }
   }
 

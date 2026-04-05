@@ -26,6 +26,17 @@ class _LoginConfig:
     post_login_url_prefix: Optional[str]
 
 
+def _looks_like_mfa(url: str, body_text: str) -> bool:
+    u = (url or "").lower()
+    t = (body_text or "").lower()
+    if "login.microsoftonline.com" in u or "login.live.com" in u:
+        if "approve sign in request" in t or "enter code" in t or "verification code" in t or "microsoft authenticator" in t:
+            return True
+    if "two-step verification" in t or "multi-factor" in t or "mfa" in t:
+        return True
+    return False
+
+
 def _same_site(a: str, b: str) -> bool:
     pa = urlparse(a)
     pb = urlparse(b)
@@ -465,6 +476,25 @@ def run_accessibility_audit(
                 page.keyboard.press("Enter")
 
             page.wait_for_timeout(wait_ms)
+
+            try:
+                body_text = page.text_content("body") or ""
+            except Exception:
+                body_text = ""
+
+            if _looks_like_mfa(page.url, body_text):
+                scanned.append(
+                    {
+                        "url": login_cfg.login_url,
+                        "title": page.title(),
+                        "violations_count": 0,
+                        "violations": [],
+                        "note": "Login requires 2FA; continuing with public crawl only.",
+                        "login_status": "2fa_required",
+                    }
+                )
+                page.goto(start_url_n, wait_until="domcontentloaded")
+                page.wait_for_timeout(wait_ms)
 
             if login_cfg.post_login_url_prefix and not page.url.startswith(login_cfg.post_login_url_prefix):
                 pass
