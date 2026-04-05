@@ -541,6 +541,8 @@ def run_accessibility_audit(
     visited: Set[str] = set()
     queue: List[str] = [_canonical_url(start_url_n, strip_tracking_params=strip_tracking_params)]
 
+    crawl_base_url = start_url_n
+
     if use_sitemap:
         seeds = _sitemap_seed_urls(start_url_n, sitemap_url, cap=max(25, max_pages * 5))
         for s in seeds:
@@ -642,6 +644,10 @@ def run_accessibility_audit(
                 page.wait_for_timeout(wait_ms)
 
                 final_url = _canonical_url(page.url, strip_tracking_params=strip_tracking_params)
+
+                if not scanned:
+                    crawl_base_url = final_url
+
                 if same_domain_only and not _same_site(start_url_n, final_url):
                     scanned.append(
                         {
@@ -674,9 +680,11 @@ def run_accessibility_audit(
 
                 hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
                 if isinstance(hrefs, list):
-                    for link in _extract_links(url, [str(x) for x in hrefs]):
+                    for link in _extract_links(final_url, [str(x) for x in hrefs]):
                         c = _canonical_url(link, strip_tracking_params=strip_tracking_params)
                         if _looks_like_login_url(c):
+                            continue
+                        if same_domain_only and not _same_site(crawl_base_url, c):
                             continue
                         if c not in visited and c not in queue:
                             queue.append(c)

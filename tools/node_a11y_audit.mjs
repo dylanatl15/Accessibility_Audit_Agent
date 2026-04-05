@@ -219,6 +219,8 @@ const visited = new Set();
 let queue = [startUrl];
 const pages = [];
 
+let crawlBaseUrl = startUrl;
+
 let lastNavMs = 0;
 
 async function throttle() {
@@ -245,7 +247,7 @@ function popNext() {
       visited.add(c);
       continue;
     }
-    if (sameDomainOnly && !sameSite(startUrl, url)) {
+    if (sameDomainOnly && !sameSite(crawlBaseUrl, url)) {
       visited.add(c);
       continue;
     }
@@ -318,6 +320,10 @@ try {
       await page.waitForTimeout(waitMs);
 
       const finalUrl = canonicalizeUrl(page.url(), stripTrackingParams);
+
+      if (pages.length === 0) {
+        crawlBaseUrl = finalUrl;
+      }
       if (sameDomainOnly && !sameSite(startUrl, finalUrl)) {
         pages.push({
           url,
@@ -350,7 +356,7 @@ try {
       });
 
       const hrefs = await page.$$eval("a[href]", (els) => els.map((e) => e.getAttribute("href")));
-      for (const link of extractLinks(url, hrefs)) {
+      for (const link of extractLinks(finalUrl, hrefs)) {
         const c = canonicalizeUrl(link, stripTrackingParams);
         if (looksLikeLoginUrl(c)) continue;
         if (!visited.has(c) && !queue.includes(c)) queue.push(c);
