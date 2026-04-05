@@ -85,8 +85,10 @@ Provide:
 - Full list of pages scanned (final URLs), in scan order
 - If `linked_documents` is present: a “Linked Documents” section with:
   - number of document URLs discovered
+  - the list of document URLs discovered (one per line)
   - number downloaded + sanitized successfully
   - number skipped/failed (with brief reasons)
+  - a per-document status list (URL → downloaded/sanitized/scanned or error)
   - document scan summary (issue count by severity) and the top 3 document issues
 - Top issues (prioritized) with fixes
 - Any pages requiring manual review
