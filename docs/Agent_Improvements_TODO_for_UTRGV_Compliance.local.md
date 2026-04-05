@@ -29,7 +29,7 @@ Goal: make this agent a reliable, repeatable pipeline for assessing and improvin
   - support diffing two runs (regression detection).
 
 ## C. Document Coverage (PDF/DOCX/PPTX) at Web Scale
-- When crawling web pages, automatically detect and collect linked documents (PDF/DOCX/PPTX) into a document audit queue.
+- [x] When crawling web pages, automatically detect and collect linked documents (PDF/DOCX/PPTX) into a document audit queue.
 - Track document provenance:
   - source page URL(s), last modified, content type, and hash.
 - Apply rule-aware exception flags (not automatic exemptions):

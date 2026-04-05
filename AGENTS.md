@@ -56,6 +56,8 @@ When the user asks to build or modify an agent:
 - Make changes on a feature branch, commit locally, push the branch, and open a PR.
 - Only merge after the user approves the PR.
 
+If there is already an open, unapproved PR for the current feature, prefer adding follow-up fixes to that same PR branch instead of opening a new PR.
+
 ## TODO tracking (required)
 
 - Maintain the project improvement backlog as a GitHub Issue checklist.

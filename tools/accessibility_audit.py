@@ -4,6 +4,8 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
+import uuid
 from shutil import which
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
 from omniagents import function_tool
+
 
 
 @dataclass(frozen=True)
@@ -230,6 +233,90 @@ def _write_json_report(path: Path, payload: Dict[str, Any]) -> Tuple[bool, Optio
         return True, None
     except Exception as e:
         return False, str(e)
+
+
+def _safe_filename_from_url(url: str, fallback_ext: str) -> str:
+    parsed = urlparse(url)
+    name = Path(parsed.path).name
+    name = re.sub(r"[^a-zA-Z0-9._-]", "_", name)[:180]
+    if not name or "." not in name:
+        name = f"download{fallback_ext}"
+    return name
+
+
+def _download_limited(url: str, dest: Path, max_bytes: int) -> Tuple[bool, Optional[str]]:
+    try:
+        with urlopen(url, timeout=20) as resp:
+            total = 0
+            with dest.open("wb") as f:
+                while True:
+                    chunk = resp.read(1024 * 64)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        return False, f"File exceeds max size ({max_bytes} bytes)"
+                    f.write(chunk)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def _sanitize_pdf(src: Path, dest: Path) -> Tuple[bool, Optional[str]]:
+    try:
+        from pypdf import PdfReader, PdfWriter  # type: ignore
+    except Exception as e:
+        return False, f"Missing dependency: pypdf ({e})"
+
+    try:
+        reader = PdfReader(str(src))
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        writer.add_metadata({})
+        with dest.open("wb") as f:
+            writer.write(f)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def _sanitize_office_zip(src: Path, dest: Path) -> Tuple[bool, Optional[str]]:
+    try:
+        import zipfile
+
+        with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+            for info in zin.infolist():
+                name = info.filename
+                lower = name.lower()
+                if lower.endswith("vbaProject.bin".lower()):
+                    continue
+                if lower.startswith("word/embeddings/") or lower.startswith("ppt/embeddings/"):
+                    continue
+                if lower.startswith("word/media/") or lower.startswith("ppt/media/") or lower.startswith("xl/media/"):
+                    pass
+                data = zin.read(info.filename)
+                if lower.endswith(".rels"):
+                    try:
+                        text = data.decode("utf-8", errors="ignore")
+                        text = re.sub(r"TargetMode=\"External\"", "", text, flags=re.IGNORECASE)
+                        data = text.encode("utf-8")
+                    except Exception:
+                        pass
+                zout.writestr(info, data)
+
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def _sanitize_downloaded_file(src: Path, dest: Path) -> Tuple[bool, Optional[str]]:
+    ext = src.suffix.lower()
+    if ext == ".pdf":
+        return _sanitize_pdf(src, dest)
+    if ext in {".docx", ".pptx"}:
+        return _sanitize_office_zip(src, dest)
+    return False, f"Unsupported file type for sanitization: {ext}"
 
 
 def _scanned_urls(pages: Any) -> List[str]:
@@ -463,6 +550,10 @@ def _run_node_audit(
     if not isinstance(pages, list):
         return {"ok": False, "error": "Node audit returned invalid pages payload."}
 
+    documents = parsed.get("documents")
+    if documents is not None and not isinstance(documents, list):
+        documents = None
+
     all_violations: List[Dict[str, Any]] = []
     for item in pages:
         if isinstance(item, dict) and isinstance(item.get("violations"), list):
@@ -472,6 +563,7 @@ def _run_node_audit(
         "ok": True,
         "engine": "node-playwright + axe-core",
         "pages": pages,
+        "documents": [str(x) for x in documents] if documents is not None else [],
         "top_issues": _summarize_violations(all_violations),
     }
 
@@ -483,6 +575,9 @@ def run_accessibility_audit(
     same_domain_only: bool = True,
     include_subdomains: bool = False,
     seed_urls: Optional[List[str]] = None,
+    scan_linked_documents: bool = False,
+    max_documents: int = 20,
+    max_document_bytes: int = 20_000_000,
     include_url_patterns: Optional[List[str]] = None,
     exclude_url_patterns: Optional[List[str]] = None,
     login_url: Optional[str] = None,
@@ -502,6 +597,12 @@ def run_accessibility_audit(
     strip_tracking_params: bool = True,
 ) -> Dict[str, Any]:
     """Crawl and scan a website with axe-core."""
+
+    if scan_linked_documents:
+        if max_documents < 0:
+            return {"ok": False, "error": "max_documents must be >= 0"}
+        if max_document_bytes < 1024:
+            return {"ok": False, "error": "max_document_bytes must be >= 1024"}
 
     start_url_n = _normalize_url(start_url)
     if not start_url_n:
@@ -551,6 +652,60 @@ def run_accessibility_audit(
 
         pages = node_res["pages"]
         summary = node_res["top_issues"]
+        doc_urls = node_res.get("documents") if isinstance(node_res, dict) else None
+        doc_urls_list = [u for u in doc_urls if isinstance(u, str)] if isinstance(doc_urls, list) else []
+
+        doc_scan: Optional[Dict[str, Any]] = None
+        tmp_dir: Optional[Path] = None
+        if scan_linked_documents and doc_urls_list:
+            tmp_dir = Path(tempfile.gettempdir()) / f"a11y_docs_{uuid.uuid4().hex}"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+
+            downloaded: List[Dict[str, Any]] = []
+            try:
+                limited = doc_urls_list[: max(0, int(max_documents))]
+                for u in limited:
+                    ext = Path(urlparse(u).path).suffix.lower()
+                    if ext not in {".pdf", ".docx", ".pptx"}:
+                        continue
+
+                    raw_name = _safe_filename_from_url(u, ext)
+                    raw_path = tmp_dir / ("raw_" + raw_name)
+                    clean_path = tmp_dir / ("clean_" + raw_name)
+
+                    ok, err = _download_limited(u, raw_path, max_bytes=int(max_document_bytes))
+                    if not ok:
+                        downloaded.append({"url": u, "ok": False, "stage": "download", "error": err})
+                        continue
+
+                    ok, err = _sanitize_downloaded_file(raw_path, clean_path)
+                    if not ok:
+                        downloaded.append({"url": u, "ok": False, "stage": "sanitize", "error": err})
+                        continue
+
+                    downloaded.append({"url": u, "ok": True, "sanitized_path": str(clean_path)})
+
+                from tools.document_accessibility import scan_documents_accessibility
+
+                scan_res = scan_documents_accessibility._original_func(
+                    root_dir=str(tmp_dir),
+                    recursive=False,
+                    max_files=max(0, int(max_documents)),
+                    extensions=[".pdf", ".docx", ".pptx"],
+                )
+                doc_scan = {
+                    "ok": bool(scan_res.get("ok")) if isinstance(scan_res, dict) else False,
+                    "downloaded": downloaded,
+                    "scan": scan_res,
+                }
+            finally:
+                try:
+                    import shutil
+
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
         res: Dict[str, Any] = {
             "ok": True,
             "engine": node_res.get("engine"),
@@ -562,6 +717,7 @@ def run_accessibility_audit(
             "pages": pages,
             "top_issues": summary,
             "scanned_urls": _scanned_urls(pages),
+            "linked_documents": doc_scan,
         }
 
         report_path = Path(output_path).expanduser() if output_path else _default_report_path("web_a11y")

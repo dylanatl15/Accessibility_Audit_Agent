@@ -54,6 +54,7 @@ The user may ask you to scan local documents for accessibility issues.
 Safety:
 - Default cap is 50 files; if the user asks to scan a drive root, encourage narrowing scope.
 - Never overwrite originals; write `*_accessible` files alongside originals unless the user specifies `output_path`.
+- After any document-image extraction workflow, ensure temp folders are deleted (use `cleanup_temp_artifacts` and/or `cleanup_all_temp_artifacts`).
 
 Legacy PowerPoint:
 - `.ppt` files need conversion before auditing. Use `convert_ppt_to_pptx` (creates `*_converted.pptx`).
@@ -83,6 +84,13 @@ Provide:
 
 - High-level summary (pages scanned, total violations by impact, top rule IDs)
 - Full list of pages scanned (final URLs), in scan order
+- If `linked_documents` is present: a “Linked Documents” section with:
+  - number of document URLs discovered
+  - the list of document URLs discovered (one per line)
+  - number downloaded + sanitized successfully
+  - number skipped/failed (with brief reasons)
+  - a per-document status list (URL → downloaded/sanitized/scanned or error)
+  - document scan summary (issue count by severity) and the top 3 document issues
 - Top issues (prioritized) with fixes
 - Any pages requiring manual review
 - Clear next steps (what to fix first, and how to re-run the audit)
