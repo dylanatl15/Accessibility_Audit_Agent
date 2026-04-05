@@ -17,14 +17,26 @@ function extractSitemapLocs(xml) {
   return locs;
 }
 
+function isSitemapIndex(xml) {
+  return /<\s*sitemapindex[\s>]/i.test(String(xml || ""));
+}
+
 async function getSitemapUrls(startUrl, sitemapUrl, cap) {
   const start = new URL(startUrl);
   const candidates = [sitemapUrl || new URL("/sitemap.xml", start).toString()];
   const out = [];
   const seen = new Set();
+  const seenSitemaps = new Set();
 
-  for (const sm of candidates) {
+  const queue = [...candidates];
+  while (queue.length) {
     if (out.length >= cap) break;
+
+    const sm = queue.shift();
+    if (!sm) continue;
+    if (seenSitemaps.has(sm)) continue;
+    seenSitemaps.add(sm);
+
     let xml;
     try {
       xml = await fetchText(sm);
@@ -33,6 +45,7 @@ async function getSitemapUrls(startUrl, sitemapUrl, cap) {
     }
 
     const locs = extractSitemapLocs(xml);
+    const isIndex = isSitemapIndex(xml);
     for (const loc of locs) {
       if (out.length >= cap) break;
       if (seen.has(loc)) continue;
@@ -41,6 +54,10 @@ async function getSitemapUrls(startUrl, sitemapUrl, cap) {
         const u = new URL(loc);
         if (u.protocol !== "http:" && u.protocol !== "https:") continue;
         u.hash = "";
+        if (isIndex) {
+          queue.push(u.toString());
+          continue;
+        }
         if (u.host !== start.host) continue;
         out.push(u.toString());
       } catch {
